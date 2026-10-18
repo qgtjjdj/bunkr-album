@@ -52,6 +52,14 @@
             android:text="@string/load" />
 
         <Button
+            android:id="@+id/pause_button"
+            style="@style/GhostButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:enabled="false"
+            android:text="@string/pause" />
+
+        <Button
             android:id="@+id/cancel_button"
             style="@style/GhostButton"
             android:layout_width="wrap_content"
@@ -88,6 +96,14 @@
             android:text="@string/change_location" />
     </LinearLayout>
 
+    <CheckBox
+        android:id="@+id/wifi_only"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:buttonTint="@color/accent"
+        android:text="@string/wifi_only"
+        android:textColor="@color/text" />
+
     <TextView
         android:id="@+id/album_title"
         android:layout_width="match_parent"
@@ -114,6 +130,38 @@
         android:text="@string/select_all"
         android:textColor="@color/text"
         android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/filter_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/filter_all"
+            style="@style/GhostButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/filter_all" />
+
+        <Button
+            android:id="@+id/filter_images"
+            style="@style/GhostButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/filter_images" />
+
+        <Button
+            android:id="@+id/filter_videos"
+            style="@style/GhostButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/filter_videos" />
+    </LinearLayout>
 
     <ListView
         android:id="@+id/file_list"

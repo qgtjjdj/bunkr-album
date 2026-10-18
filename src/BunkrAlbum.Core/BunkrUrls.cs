@@ -80,6 +80,43 @@ public static class BunkrUrls
         return url;
     }
 
+    public static string? ExtractUrl(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"https?://[^\s<>""']+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var candidate = (match.Success ? match.Value : text).Trim().TrimEnd('.', ',', ';', ')');
+        try
+        {
+            Parse(candidate);
+            return candidate;
+        }
+        catch (BunkrException)
+        {
+            return null;
+        }
+    }
+
+    public static bool IsImage(BunkrFile file) => GuessMime(file).StartsWith("image/", StringComparison.Ordinal);
+
+    public static bool IsVideo(BunkrFile file) => GuessMime(file).StartsWith("video/", StringComparison.Ordinal);
+
+    public readonly record struct RangeDecision(long StartAt, bool Truncate, bool AlreadyComplete);
+
+    public static RangeDecision DecideRange(long offset, int statusCode, bool canSeek)
+    {
+        if (offset <= 0 || statusCode == 200 && offset <= 0)
+            return new RangeDecision(0, false, false);
+        if (statusCode == 206)
+            return new RangeDecision(offset, false, false);
+        if (statusCode == 416)
+            return new RangeDecision(offset, false, true);
+        if (statusCode == 200 && canSeek)
+            return new RangeDecision(0, true, false);
+        return new RangeDecision(0, false, false);
+    }
+
     public static string SanitizeFileName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

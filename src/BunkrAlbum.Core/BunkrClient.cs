@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 
 namespace BunkrAlbum;
@@ -54,10 +55,11 @@ public sealed class BunkrClient : IDisposable
         BunkrFile file,
         Stream destination,
         IProgress<long>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long offset = 0)
     {
         var url = await ResolveWithRetryAsync(file, cancellationToken);
-        return await CopyUrlAsync(url, destination, progress, cancellationToken);
+        return await CopyUrlAsync(url, destination, progress, offset, cancellationToken);
     }
 
     async Task<string> ResolveWithRetryAsync(BunkrFile file, CancellationToken cancellationToken)
@@ -97,24 +99,54 @@ public sealed class BunkrClient : IDisposable
         return BunkrUrls.WithSignature(mediaUrl, token, expires);
     }
 
-    async Task<long> CopyUrlAsync(string url, Stream destination, IProgress<long>? progress, CancellationToken cancellationToken)
+    async Task<long> CopyUrlAsync(
+        string url,
+        Stream destination,
+        IProgress<long>? progress,
+        long offset,
+        CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.TryAddWithoutValidation("Referer", "https://bunkr.cr/");
         request.Headers.TryAddWithoutValidation("Accept", "*/*");
+        if (offset > 0)
+            request.Headers.Range = new RangeHeaderValue(offset, null);
+
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && offset > 0)
+        {
+            progress?.Report(offset);
+            return offset;
+        }
+
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
             throw new BunkrException("Der Download-Link wurde abgelehnt.");
-        if (!response.IsSuccessStatusCode)
+
+        var decision = BunkrUrls.DecideRange(offset, (int)response.StatusCode, destination.CanSeek);
+        if (offset > 0 && response.StatusCode == HttpStatusCode.OK && !decision.Truncate)
+            throw new BunkrException("Die Datei muss neu geladen werden.");
+        if (!decision.AlreadyComplete && response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.PartialContent))
             throw new BunkrException("Download-Server antwortet mit " + (int)response.StatusCode + ".");
 
         var mediaType = response.Content.Headers.ContentType?.MediaType ?? "";
         if (mediaType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
             throw new BunkrException("Der Server hat keine Datei geliefert. Signatur oder Wartung prüfen.");
 
+        if (decision.AlreadyComplete)
+        {
+            progress?.Report(offset);
+            return offset;
+        }
+
+        if (decision.Truncate)
+        {
+            destination.SetLength(0);
+            destination.Position = 0;
+        }
+
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
         var buffer = new byte[80 * 1024];
-        long total = 0;
+        long total = decision.StartAt;
         while (true)
         {
             var read = await source.ReadAsync(buffer, cancellationToken);

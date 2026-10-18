@@ -5,6 +5,91 @@ namespace BunkrAlbum;
 
 static class DownloadRepository
 {
+    public static long? ExistingSize(Context context, string? treeUri, string displayName)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(treeUri))
+                return TreeSize(context, treeUri, displayName);
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
+                return MediaStoreSize(context, displayName);
+            return AppFolderSize(context, displayName);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    static long? TreeSize(Context context, string treeUri, string displayName)
+    {
+        var resolver = context.ContentResolver;
+        var tree = Android.Net.Uri.Parse(treeUri);
+        if (resolver is null || tree is null)
+            return null;
+        var docId = DocumentsContract.GetTreeDocumentId(tree);
+        if (string.IsNullOrEmpty(docId))
+            return null;
+        var children = DocumentsContract.BuildChildDocumentsUriUsingTree(tree, docId);
+        if (children is null)
+            return null;
+
+        using var cursor = resolver.Query(
+            children,
+            [DocumentsContract.Document.ColumnDisplayName, DocumentsContract.Document.ColumnSize],
+            null,
+            null,
+            null);
+        if (cursor is null)
+            return null;
+
+        var nameIndex = cursor.GetColumnIndex(DocumentsContract.Document.ColumnDisplayName);
+        var sizeIndex = cursor.GetColumnIndex(DocumentsContract.Document.ColumnSize);
+        long? found = null;
+        while (cursor.MoveToNext())
+        {
+            if (nameIndex < 0 || cursor.GetString(nameIndex) != displayName)
+                continue;
+            var size = sizeIndex < 0 || cursor.IsNull(sizeIndex) ? 0 : cursor.GetLong(sizeIndex);
+            if (found is null || size > found)
+                found = size;
+        }
+
+        return found;
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("android29.0")]
+    static long? MediaStoreSize(Context context, string displayName)
+    {
+        var resolver = context.ContentResolver;
+        if (resolver is null)
+            return null;
+
+        foreach (var relative in new[] { "Download/Bunkr/", "Download/Bunkr" })
+        {
+            using var cursor = resolver.Query(
+                MediaStore.Downloads.ExternalContentUri,
+                [MediaStore.IMediaColumns.Size],
+                MediaStore.IMediaColumns.DisplayName + "=? AND " + MediaStore.IMediaColumns.RelativePath + "=?",
+                [displayName, relative],
+                null);
+            if (cursor is null || !cursor.MoveToFirst() || cursor.IsNull(0))
+                continue;
+            return cursor.GetLong(0);
+        }
+
+        return null;
+    }
+
+    static long? AppFolderSize(Context context, string displayName)
+    {
+        var root = context.GetExternalFilesDir(Android.OS.Environment.DirectoryDownloads) ?? context.FilesDir;
+        if (root is null)
+            return null;
+        var target = new Java.IO.File(new Java.IO.File(root, "Bunkr"), displayName);
+        return target.IsFile ? target.Length() : null;
+    }
+
     public static async Task<string> SaveAsync(
         Context context,
         string? treeUri,

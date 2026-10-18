@@ -1,6 +1,8 @@
 # Bunkr Album
 
-Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und werden gespeichert. Standardordner ist **Download/Bunkr**. Über **Ändern** öffnet sich die Ordnerauswahl des Systems, die Wahl bleibt gespeichert. Ein laufender Download geht weiter, wenn die App im Hintergrund ist oder aus der Übersicht gewischt wird. Fortschritt und Abbrechen stehen in der Benachrichtigung.
+Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und werden gespeichert. Standardordner ist **Download/Bunkr**, über **Ändern** ein anderer Ordner. Ein laufender Download geht im Hintergrund weiter. Pause, Fortsetzen und Abbrechen stehen in der App und in der Benachrichtigung. Nach einem Neustart des Handys erinnert eine Benachrichtigung daran, den Lauf fortzusetzen; angefangene Dateien werden weitergeladen, schon vorhandene übersprungen. Weitere Alben können in die Warteschlange. Filter: Alle, Bilder, Videos. Optional nur über WLAN. Ein Link lässt sich aus dem Browser teilen oder direkt öffnen.
+
+Die Signatur bleibt gleich, sobald die Repository-Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` und `ANDROID_KEY_PASSWORD` gesetzt sind. Danach lassen sich Updates über die installierte App legen. Ohne diese Secrets erzeugt jeder Lauf ein neues Zertifikat, und ein Update geht nur nach dem Deinstallieren.
 
 Beispiel: `https://bunkr.cr/a/cpdYatJu`
 
@@ -16,14 +18,7 @@ Jeder Push auf `main` startet [Build APK](.github/workflows/android-apk.yml). Di
 2. Artifact herunterladen und die APK auf dem Handy installieren.
 3. Installation aus unbekannten Quellen erlauben.
 
-Ohne hinterlegte Signatur-Secrets erzeugt der Lauf jedes Mal ein neues Zertifikat. Ein Update über eine schon installierte Version geht dann nur nach dem Deinstallieren. Für eine feste Signatur diese Repository-Secrets setzen:
-
-| Secret | Inhalt |
-| --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | Base64 der `.keystore` |
-| `ANDROID_KEYSTORE_PASSWORD` | Store-Passwort |
-| `ANDROID_KEY_ALIAS` | Key-Alias |
-| `ANDROID_KEY_PASSWORD` | Key-Passwort |
+Ohne die Signatur-Secrets erzeugt der Lauf ein Wegwerf-Zertifikat. Ein Update geht dann nur nach dem Deinstallieren.
 
 ## Lokal
 

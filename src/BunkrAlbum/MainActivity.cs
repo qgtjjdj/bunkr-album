@@ -3,6 +3,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
+using Android.Views;
 using Environment = System.Environment;
 using OperationCanceledException = System.OperationCanceledException;
 
@@ -15,24 +16,43 @@ namespace BunkrAlbum;
     Theme = "@style/AppTheme",
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden,
     LaunchMode = LaunchMode.SingleTop)]
+[IntentFilter(new[] { Intent.ActionSend }, Categories = new[] { Intent.CategoryDefault }, DataMimeType = "text/plain")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.cr", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.cr", DataPathPrefix = "/f/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "*.bunkr.cr", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "*.bunkr.cr", DataPathPrefix = "/f/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.si", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.su", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.sk", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkr.site", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "https", DataHost = "bunkrr.su", DataPathPrefix = "/a/")]
+[IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable }, DataScheme = "http", DataHost = "bunkr.cr", DataPathPrefix = "/a/")]
 public class MainActivity : Activity
 {
     const int PickFolderRequest = 41;
 
     readonly BunkrClient _client = new();
     readonly List<FileRow> _rows = [];
+    readonly List<FileRow> _visible = [];
     EditText _url = null!;
     TextView _title = null!;
     TextView _status = null!;
     TextView _location = null!;
     CheckBox _selectAll = null!;
+    CheckBox _wifi = null!;
     ListView _list = null!;
+    LinearLayout _filterRow = null!;
     Button _load = null!;
     Button _cancel = null!;
+    Button _pause = null!;
     Button _download = null!;
     Button _locationButton = null!;
+    Button _filterAll = null!;
+    Button _filterImages = null!;
+    Button _filterVideos = null!;
     FileListAdapter? _adapter;
     CancellationTokenSource? _work;
+    FileFilter _filter = FileFilter.All;
     bool _suppressSelectAll;
     bool _busy;
     long _lastDraw;
@@ -50,30 +70,57 @@ public class MainActivity : Activity
         _list = RequireView<ListView>(Resource.Id.file_list);
         _load = RequireView<Button>(Resource.Id.load_button);
         _cancel = RequireView<Button>(Resource.Id.cancel_button);
+        _pause = RequireView<Button>(Resource.Id.pause_button);
         _download = RequireView<Button>(Resource.Id.download_button);
         _locationButton = RequireView<Button>(Resource.Id.location_button);
+        _wifi = RequireView<CheckBox>(Resource.Id.wifi_only);
+        _filterRow = RequireView<LinearLayout>(Resource.Id.filter_row);
+        _filterAll = RequireView<Button>(Resource.Id.filter_all);
+        _filterImages = RequireView<Button>(Resource.Id.filter_images);
+        _filterVideos = RequireView<Button>(Resource.Id.filter_videos);
 
         _load.Click += async (_, _) => await LoadAlbumAsync();
         _download.Click += (_, _) => StartDownload();
+        _pause.Click += (_, _) =>
+        {
+            if (DownloadHub.IsRunning)
+                DownloadHub.Pause(this);
+        };
         _cancel.Click += (_, _) =>
         {
             _work?.Cancel();
-            if (DownloadHub.IsRunning)
-                DownloadHub.RequestCancel(this);
+            if (DownloadHub.IsRunning || DownloadHub.HasPending || DownloadHub.IsPaused)
+                DownloadHub.Cancel(this);
         };
         _locationButton.Click += (_, _) => ChooseLocation();
+        _filterAll.Click += (_, _) => SetFilter(FileFilter.All);
+        _filterImages.Click += (_, _) => SetFilter(FileFilter.Images);
+        _filterVideos.Click += (_, _) => SetFilter(FileFilter.Videos);
+        _wifi.Checked = AppSettings.WifiOnly(this);
+        _wifi.CheckedChange += (_, e) => AppSettings.SetWifiOnly(this, e.IsChecked);
         _selectAll.CheckedChange += (_, e) =>
         {
             if (_suppressSelectAll)
                 return;
-            foreach (var row in _rows)
+            foreach (var row in _visible)
                 row.Selected = e.IsChecked;
             _adapter?.NotifyDataSetChanged();
             UpdateDownloadButton();
         };
+        DownloadHub.EnsureLoaded(this);
         UpdateLocationLabel();
         DownloadHub.Changed += OnHubChanged;
         ApplySession();
+        AcceptLink(Intent);
+        MaybeResume();
+    }
+
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        if (intent is not null)
+            Intent = intent;
+        AcceptLink(intent);
     }
 
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
@@ -116,7 +163,7 @@ public class MainActivity : Activity
 
     void ChooseLocation()
     {
-        if (_busy || DownloadHub.IsRunning)
+        if (_busy)
             return;
 
         if (StorageLocation.GetTreeUri(this) is null)
@@ -232,15 +279,16 @@ public class MainActivity : Activity
 
     void StartDownload()
     {
-        if (DownloadHub.IsRunning)
-        {
-            Toast.MakeText(this, "Ein Download läuft schon.", ToastLength.Short)?.Show();
-            return;
-        }
-
+        AskForNotifications();
         var selected = _rows.Where(row => row.Selected).ToList();
         if (selected.Count == 0)
         {
+            if (DownloadHub.HasPending && !DownloadHub.IsRunning)
+            {
+                LaunchQueue();
+                return;
+            }
+
             Toast.MakeText(this, "Keine Datei ausgewählt.", ToastLength.Short)?.Show();
             return;
         }
@@ -248,39 +296,63 @@ public class MainActivity : Activity
         if (!TryGetWritableTree(out var treeUri))
             return;
 
+        var place = StorageLocation.Describe(treeUri);
+        var album = string.IsNullOrWhiteSpace(_title.Text) ? "Bunkr Album" : _title.Text!;
+        var items = new List<WorkItem>();
+        foreach (var row in selected)
+        {
+            var index = _rows.IndexOf(row) + 1;
+            row.Status = "Wartet";
+            items.Add(new WorkItem
+            {
+                File = row.File,
+                SaveName = $"{index:000}_{BunkrUrls.SanitizeFileName(row.File.Original)}",
+                AlbumTitle = album,
+                Place = place,
+                TreeUri = treeUri,
+            });
+        }
+
+        RefreshRowsForce();
+        var alive = DownloadHub.Enqueue(this, items);
+        if (!alive)
+            LaunchQueue();
+        ApplySession();
+    }
+
+    void LaunchQueue()
+    {
+        AskForNotifications();
+        var intent = new Intent(this, typeof(global::BunkrAlbum.DownloadService));
+        intent.SetAction(global::BunkrAlbum.DownloadService.ActionResume);
+        StartForegroundService(intent);
+    }
+
+    void MaybeResume()
+    {
+        if (DownloadHub.HasPending && !DownloadHub.IsPaused && !DownloadHub.IsRunning)
+            LaunchQueue();
+    }
+
+    void AskForNotifications()
+    {
         if (OperatingSystem.IsAndroidVersionAtLeast(33) &&
             CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
         {
             RequestPermissions([Android.Manifest.Permission.PostNotifications], 51);
         }
+    }
 
-        var items = selected.Select(row =>
-        {
-            var index = _rows.IndexOf(row) + 1;
-            row.Status = "Wartet";
-            return new WorkItem
-            {
-                File = row.File,
-                SaveName = $"{index:000}_{BunkrUrls.SanitizeFileName(row.File.Original)}",
-            };
-        }).ToList();
-
-        var session = new DownloadSession
-        {
-            AlbumTitle = string.IsNullOrWhiteSpace(_title.Text) ? "Bunkr Album" : _title.Text!,
-            Place = StorageLocation.Describe(treeUri),
-            TreeUri = treeUri,
-            Items = items,
-            Summary = $"0/{items.Count} startet …",
-        };
-        if (!DownloadHub.TryBegin(session))
+    void AcceptLink(Intent? intent)
+    {
+        var raw = intent?.Action == Intent.ActionSend
+            ? intent.GetStringExtra(Intent.ExtraText) ?? intent.GetStringExtra(Intent.ExtraSubject)
+            : intent?.DataString;
+        var url = BunkrUrls.ExtractUrl(raw);
+        if (url is null || _busy)
             return;
-
-        RefreshRowsForce();
-        var intent = new Intent(this, typeof(global::BunkrAlbum.DownloadService));
-        intent.SetAction(global::BunkrAlbum.DownloadService.ActionStart);
-        StartForegroundService(intent);
-        ApplySession();
+        _url.Text = url;
+        _ = LoadAlbumAsync();
     }
 
     void OnHubChanged()
@@ -300,7 +372,7 @@ public class MainActivity : Activity
 
         if (_rows.Count == 0 && !_busy)
         {
-            _title.Text = session.AlbumTitle;
+            _title.Text = session.Title;
             _rows.AddRange(session.Items.Select(item => new FileRow
             {
                 File = item.File,
@@ -332,15 +404,62 @@ public class MainActivity : Activity
 
     void BindRows()
     {
-        _adapter = new FileListAdapter(this, _rows, SyncSelectAll);
-        _list.Adapter = _adapter;
+        _visible.Clear();
+        foreach (var row in _rows)
+        {
+            if (Matches(row))
+                _visible.Add(row);
+        }
+
+        var show = _rows.Count > 0 ? Android.Views.ViewStates.Visible : Android.Views.ViewStates.Gone;
+        _selectAll.Visibility = show;
+        _filterRow.Visibility = show;
+        if (_adapter is null)
+        {
+            _adapter = new FileListAdapter(this, _visible, SyncSelectAll);
+            _list.Adapter = _adapter;
+        }
+        else
+        {
+            _adapter.NotifyDataSetChanged();
+        }
+
+        PaintFilters();
         UpdateDownloadButton();
+    }
+
+    void SetFilter(FileFilter filter)
+    {
+        _filter = filter;
+        BindRows();
+        SyncSelectAll();
+    }
+
+    bool Matches(FileRow row) => _filter switch
+    {
+        FileFilter.Images => BunkrUrls.IsImage(row.File),
+        FileFilter.Videos => BunkrUrls.IsVideo(row.File),
+        _ => true,
+    };
+
+    void PaintFilters()
+    {
+        Paint(_filterAll, _filter == FileFilter.All);
+        Paint(_filterImages, _filter == FileFilter.Images);
+        Paint(_filterVideos, _filter == FileFilter.Videos);
+    }
+
+    void Paint(Button button, bool active)
+    {
+        if (Resources is null)
+            return;
+        button.SetTextColor(Resources.GetColor(active ? Resource.Color.accent : Resource.Color.muted, Theme));
     }
 
     void SyncSelectAll()
     {
         _suppressSelectAll = true;
-        _selectAll.Checked = _rows.Count > 0 && _rows.All(row => row.Selected);
+        _selectAll.Checked = _visible.Count > 0 && _visible.All(row => row.Selected);
         _suppressSelectAll = false;
         UpdateDownloadButton();
     }
@@ -348,11 +467,21 @@ public class MainActivity : Activity
     void UpdateDownloadButton()
     {
         var count = _rows.Count(row => row.Selected);
-        var downloading = DownloadHub.IsRunning;
-        _download.Enabled = !_busy && !downloading && count > 0;
-        _download.Text = count > 0 ? $"Herunterladen ({count})" : "Herunterladen";
-        _cancel.Enabled = _busy || downloading;
-        _locationButton.Enabled = !_busy && !downloading;
+        var running = DownloadHub.IsRunning;
+        var pending = DownloadHub.HasPending;
+        if (running && count > 0)
+            _download.Text = $"Zur Warteschlange ({count})";
+        else if (!running && pending && count == 0)
+            _download.Text = "Fortsetzen";
+        else if (!running && pending)
+            _download.Text = $"Fortsetzen ({count})";
+        else
+            _download.Text = count > 0 ? $"Herunterladen ({count})" : "Herunterladen";
+
+        _download.Enabled = !_busy && (count > 0 || (pending && !running));
+        _cancel.Enabled = _busy || running || pending;
+        _pause.Enabled = running;
+        _locationButton.Enabled = !_busy;
     }
 
     void RefreshRows()
@@ -381,4 +510,11 @@ public class MainActivity : Activity
 
     T RequireView<T>(int id) where T : Android.Views.View
         => FindViewById<T>(id) ?? throw new InvalidOperationException("View fehlt: " + id);
+}
+
+enum FileFilter
+{
+    All,
+    Images,
+    Videos,
 }
