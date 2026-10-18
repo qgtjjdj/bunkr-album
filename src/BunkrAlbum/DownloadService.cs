@@ -244,8 +244,12 @@ public class DownloadService : Service
 
         if (total > 0)
             builder.SetProgress(total, Math.Min(done, total), false);
-        if (ongoing)
-            builder.AddAction(new Notification.Action.Builder(0, "Abbrechen", cancel).Build());
+        if (ongoing && cancel is not null)
+        {
+#pragma warning disable CA1422
+            builder.AddAction(new Notification.Action(0, "Abbrechen", cancel));
+#pragma warning restore CA1422
+        }
         return builder.Build();
     }
 

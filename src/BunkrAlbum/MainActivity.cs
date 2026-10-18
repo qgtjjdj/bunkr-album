@@ -277,8 +277,8 @@ public class MainActivity : Activity
             return;
 
         RefreshRowsForce();
-        var intent = new Intent(this, typeof(DownloadService));
-        intent.SetAction(DownloadService.ActionStart);
+        var intent = new Intent(this, typeof(global::BunkrAlbum.DownloadService));
+        intent.SetAction(global::BunkrAlbum.DownloadService.ActionStart);
         StartForegroundService(intent);
         ApplySession();
     }
