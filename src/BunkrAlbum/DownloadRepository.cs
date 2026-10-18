@@ -150,7 +150,7 @@ static class DownloadRepository
         {
             using var cursor = resolver.Query(
                 MediaStore.Downloads.ExternalContentUri,
-                [MediaStore.IMediaColumns.Id],
+                ["_id"],
                 MediaStore.IMediaColumns.DisplayName + "=? AND " + MediaStore.IMediaColumns.RelativePath + "=?",
                 [displayName, relative],
                 null);
