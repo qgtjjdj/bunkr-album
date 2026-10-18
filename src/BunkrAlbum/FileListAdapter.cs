@@ -38,7 +38,7 @@ sealed class FileListAdapter : BaseAdapter<FileRow>
 
         check.SetOnCheckedChangeListener(null);
         check.Checked = row.Selected;
-        check.Tag = new Java.Lang.Integer(position);
+        check.Tag = new Java.Lang.String(position.ToString());
         check.SetOnCheckedChangeListener(_checks);
         return view;
     }
@@ -56,9 +56,8 @@ sealed class FileListAdapter : BaseAdapter<FileRow>
 
         public void OnCheckedChanged(CompoundButton? buttonView, bool isChecked)
         {
-            if (buttonView?.Tag is not Java.Lang.Integer index)
+            if (buttonView?.Tag?.ToString() is not string text || !int.TryParse(text, out var position))
                 return;
-            var position = index.IntValue();
             if (position < 0 || position >= _rows.Count)
                 return;
             if (_rows[position].Selected == isChecked)
