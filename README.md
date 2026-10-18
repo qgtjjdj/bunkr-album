@@ -1,6 +1,6 @@
 # Bunkr Album
 
-Android-App in C# (**.NET 8 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und landen auf dem Gerät unter **Download/Bunkr**.
+Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und landen auf dem Gerät unter **Download/Bunkr**.
 
 Beispiel: `https://bunkr.cr/a/cpdYatJu`
 
@@ -30,8 +30,8 @@ Ohne hinterlegte Signatur-Secrets erzeugt der Lauf jedes Mal ein neues Zertifika
 ```bash
 dotnet test tests/BunkrAlbum.Core.Tests/BunkrAlbum.Core.Tests.csproj
 dotnet workload install android
-dotnet build src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net8.0-android -t:InstallAndroidDependencies -p:AcceptAndroidSDKLicenses=true
-dotnet publish src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net8.0-android
+dotnet build src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net10.0-android -t:InstallAndroidDependencies -p:AcceptAndroidSdkLicenses=true
+dotnet publish src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net10.0-android
 ```
 
-JDK 17. Ziel ist `net8.0-android`, arm64, min. Android 8 (API 26).
+JDK 21. Ziel ist `net10.0-android`, arm64, min. Android 8 (API 26).
