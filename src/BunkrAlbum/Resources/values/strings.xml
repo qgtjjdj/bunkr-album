@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Bunkr Album</string>
+  <string name="subtitle">Album-Link einfügen. Dateien landen unter Download/Bunkr.</string>
+  <string name="url_hint">https://bunkr.cr/a/…</string>
+  <string name="load">Album laden</string>
+  <string name="cancel">Abbrechen</string>
+  <string name="download">Herunterladen</string>
+  <string name="select_all">Alle auswählen</string>
+</resources>

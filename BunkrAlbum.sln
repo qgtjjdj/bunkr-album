@@ -1,0 +1,28 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BunkrAlbum.Core", "src\BunkrAlbum.Core\BunkrAlbum.Core.csproj", "{8F3A1C2E-4B6D-4E91-9C0A-1A2B3C4D5E6F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BunkrAlbum", "src\BunkrAlbum\BunkrAlbum.csproj", "{7E2B0D1F-3A5C-4D80-8B19-0F1E2D3C4B5A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BunkrAlbum.Core.Tests", "tests\BunkrAlbum.Core.Tests\BunkrAlbum.Core.Tests.csproj", "{6D1A9C0E-2B4B-4C7F-9A08-9E0D1C2B3A49}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8F3A1C2E-4B6D-4E91-9C0A-1A2B3C4D5E6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F3A1C2E-4B6D-4E91-9C0A-1A2B3C4D5E6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F3A1C2E-4B6D-4E91-9C0A-1A2B3C4D5E6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F3A1C2E-4B6D-4E91-9C0A-1A2B3C4D5E6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E2B0D1F-3A5C-4D80-8B19-0F1E2D3C4B5A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E2B0D1F-3A5C-4D80-8B19-0F1E2D3C4B5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E2B0D1F-3A5C-4D80-8B19-0F1E2D3C4B5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E2B0D1F-3A5C-4D80-8B19-0F1E2D3C4B5A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6D1A9C0E-2B4B-4C7F-9A08-9E0D1C2B3A49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6D1A9C0E-2B4B-4C7F-9A08-9E0D1C2B3A49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6D1A9C0E-2B4B-4C7F-9A08-9E0D1C2B3A49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6D1A9C0E-2B4B-4C7F-9A08-9E0D1C2B3A49}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
