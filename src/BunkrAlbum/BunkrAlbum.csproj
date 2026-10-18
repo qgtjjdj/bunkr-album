@@ -8,8 +8,8 @@
     <RootNamespace>BunkrAlbum</RootNamespace>
     <AssemblyName>BunkrAlbum</AssemblyName>
     <ApplicationId>com.qgtjjdj.bunkralbum</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
     <AndroidManifest>Properties/AndroidManifest.xml</AndroidManifest>
     <RuntimeIdentifier>android-arm64</RuntimeIdentifier>

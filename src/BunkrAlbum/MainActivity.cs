@@ -1,4 +1,5 @@
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Widget;
@@ -15,16 +16,20 @@ namespace BunkrAlbum;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
 public class MainActivity : Activity
 {
+    const int PickFolderRequest = 41;
+
     readonly BunkrClient _client = new();
     readonly List<FileRow> _rows = [];
     EditText _url = null!;
     TextView _title = null!;
     TextView _status = null!;
+    TextView _location = null!;
     CheckBox _selectAll = null!;
     ListView _list = null!;
     Button _load = null!;
     Button _cancel = null!;
     Button _download = null!;
+    Button _locationButton = null!;
     FileListAdapter? _adapter;
     CancellationTokenSource? _work;
     bool _suppressSelectAll;
@@ -39,15 +44,18 @@ public class MainActivity : Activity
         _url = RequireView<EditText>(Resource.Id.url_input);
         _title = RequireView<TextView>(Resource.Id.album_title);
         _status = RequireView<TextView>(Resource.Id.status_text);
+        _location = RequireView<TextView>(Resource.Id.location_text);
         _selectAll = RequireView<CheckBox>(Resource.Id.select_all);
         _list = RequireView<ListView>(Resource.Id.file_list);
         _load = RequireView<Button>(Resource.Id.load_button);
         _cancel = RequireView<Button>(Resource.Id.cancel_button);
         _download = RequireView<Button>(Resource.Id.download_button);
+        _locationButton = RequireView<Button>(Resource.Id.location_button);
 
         _load.Click += async (_, _) => await LoadAlbumAsync();
         _download.Click += async (_, _) => await DownloadSelectedAsync();
         _cancel.Click += (_, _) => _work?.Cancel();
+        _locationButton.Click += (_, _) => ChooseLocation();
         _selectAll.CheckedChange += (_, e) =>
         {
             if (_suppressSelectAll)
@@ -57,6 +65,31 @@ public class MainActivity : Activity
             _adapter?.NotifyDataSetChanged();
             UpdateDownloadButton();
         };
+        UpdateLocationLabel();
+    }
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode != PickFolderRequest || resultCode != Result.Ok || data?.Data is null)
+            return;
+
+        var uri = data.Data;
+        try
+        {
+            ContentResolver?.TakePersistableUriPermission(
+                uri,
+                ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantWriteUriPermission);
+        }
+        catch (Exception)
+        {
+            Toast.MakeText(this, "Der Ordner konnte nicht gemerkt werden.", ToastLength.Long)?.Show();
+            return;
+        }
+
+        StorageLocation.Save(this, uri.ToString() ?? "");
+        UpdateLocationLabel();
+        _status.Text = "Speichert nach " + StorageLocation.Describe(uri.ToString());
     }
 
     protected override void OnDestroy()
@@ -64,6 +97,78 @@ public class MainActivity : Activity
         _work?.Cancel();
         _client.Dispose();
         base.OnDestroy();
+    }
+
+    void ChooseLocation()
+    {
+        if (_busy)
+            return;
+
+        if (StorageLocation.GetTreeUri(this) is null)
+        {
+            PickFolder();
+            return;
+        }
+
+        new AlertDialog.Builder(this)?
+            .SetTitle("Speicherort")?
+            .SetItems(
+                ["Anderen Ordner wählen", "Standard: Download/Bunkr"],
+                (_, e) =>
+                {
+                    if (e.Which == 0)
+                        PickFolder();
+                    else
+                        ResetLocation();
+                })?
+            .Show();
+    }
+
+    void PickFolder()
+    {
+        var intent = new Intent(Intent.ActionOpenDocumentTree);
+        intent.AddFlags(ActivityFlags.GrantReadUriPermission
+            | ActivityFlags.GrantWriteUriPermission
+            | ActivityFlags.GrantPersistableUriPermission
+            | ActivityFlags.GrantPrefixUriPermission);
+        intent.PutExtra(
+            "android.provider.extra.INITIAL_URI",
+            Android.Net.Uri.Parse("content://com.android.externalstorage.documents/document/primary:Download"));
+        try
+        {
+            StartActivityForResult(intent, PickFolderRequest);
+        }
+        catch (Exception)
+        {
+            Toast.MakeText(this, "Die Ordnerauswahl ist nicht verfügbar.", ToastLength.Long)?.Show();
+        }
+    }
+
+    void ResetLocation()
+    {
+        StorageLocation.Clear(this);
+        UpdateLocationLabel();
+        _status.Text = "Speichert nach " + StorageLocation.DefaultLabel;
+    }
+
+    void UpdateLocationLabel()
+    {
+        _location.Text = StorageLocation.Describe(StorageLocation.GetTreeUri(this));
+    }
+
+    bool TryGetWritableTree(out string? treeUri)
+    {
+        treeUri = StorageLocation.GetTreeUri(this);
+        if (string.IsNullOrEmpty(treeUri))
+            return true;
+        if (StorageLocation.HasWriteAccess(this, treeUri))
+            return true;
+
+        StorageLocation.Clear(this);
+        UpdateLocationLabel();
+        Toast.MakeText(this, "Zugriff auf den Ordner ist weg. Bitte neu wählen.", ToastLength.Long)?.Show();
+        treeUri = null;
+        return false;
     }
 
     async Task LoadAlbumAsync()
@@ -120,6 +225,11 @@ public class MainActivity : Activity
             return;
         }
 
+        if (!TryGetWritableTree(out var treeUri))
+            return;
+
+        var place = StorageLocation.Describe(treeUri);
+
         _work = new CancellationTokenSource();
         var ct = _work.Token;
         SetBusy(true);
@@ -134,7 +244,7 @@ public class MainActivity : Activity
                 await gate.WaitAsync(ct);
                 try
                 {
-                    await DownloadRowAsync(row, ct);
+                    await DownloadRowAsync(row, treeUri, ct);
                     Interlocked.Increment(ref ok);
                 }
                 catch (OperationCanceledException)
@@ -163,7 +273,7 @@ public class MainActivity : Activity
 
             await Task.WhenAll(tasks);
             _status.Text = failed == 0
-                ? $"Fertig. {ok} Dateien unter Download/Bunkr."
+                ? $"Fertig. {ok} Dateien unter {place}."
                 : $"Fertig. {ok} gespeichert, {failed} fehlgeschlagen.";
         }
         catch (OperationCanceledException)
@@ -177,7 +287,7 @@ public class MainActivity : Activity
         }
     }
 
-    async Task DownloadRowAsync(FileRow row, CancellationToken cancellationToken)
+    async Task DownloadRowAsync(FileRow row, string? treeUri, CancellationToken cancellationToken)
     {
         var index = _rows.IndexOf(row) + 1;
         var fileName = $"{index:000}_{BunkrUrls.SanitizeFileName(row.File.Original)}";
@@ -191,7 +301,7 @@ public class MainActivity : Activity
             RunOnUiThread(RefreshRowsForce);
             try
             {
-                await DownloadRepository.SaveAsync(this, fileName, mime, async (stream, token) =>
+                await DownloadRepository.SaveAsync(this, treeUri, fileName, mime, async (stream, token) =>
                 {
                     var progress = new InlineProgress(bytes =>
                     {
@@ -264,6 +374,7 @@ public class MainActivity : Activity
         _load.Enabled = !busy;
         _url.Enabled = !busy;
         _cancel.Enabled = busy;
+        _locationButton.Enabled = !busy;
         _selectAll.Enabled = !busy;
         UpdateDownloadButton();
     }

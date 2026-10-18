@@ -1,6 +1,6 @@
 # Bunkr Album
 
-Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und landen auf dem Gerät unter **Download/Bunkr**.
+Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und werden gespeichert. Standardordner ist **Download/Bunkr**. Über **Ändern** öffnet sich die Ordnerauswahl des Systems, die Wahl bleibt gespeichert.
 
 Beispiel: `https://bunkr.cr/a/cpdYatJu`
 
