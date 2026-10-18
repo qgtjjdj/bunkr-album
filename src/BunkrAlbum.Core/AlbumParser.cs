@@ -8,13 +8,13 @@ public static partial class AlbumParser
     public static AlbumInfo ParseAlbum(string sourceUrl, string html)
     {
         if (string.IsNullOrWhiteSpace(html))
-            throw new BunkrException("Die Albumseite ist leer.");
+            throw new BunkrException("The album page is empty.");
         if (html.Contains("Server under maintenance", StringComparison.OrdinalIgnoreCase))
-            throw new BunkrException("Bunkr meldet Wartung. Bitte später erneut versuchen.");
+            throw new BunkrException("Bunkr is under maintenance. Try again later.");
 
         var files = ParseAlbumFiles(html);
         if (files.Count == 0)
-            throw new BunkrException("In diesem Album sind keine Dateien.");
+            throw new BunkrException("This album has no files.");
 
         return new AlbumInfo(ExtractTitle(html, "Album"), sourceUrl, files);
     }
@@ -22,20 +22,20 @@ public static partial class AlbumParser
     public static AlbumInfo ParseSingleFile(string sourceUrl, string html)
     {
         if (string.IsNullOrWhiteSpace(html))
-            throw new BunkrException("Die Dateiseite ist leer.");
+            throw new BunkrException("The file page is empty.");
         if (html.Contains("Server under maintenance", StringComparison.OrdinalIgnoreCase))
-            throw new BunkrException("Bunkr meldet Wartung. Bitte später erneut versuchen.");
+            throw new BunkrException("Bunkr is under maintenance. Try again later.");
 
         var idMatch = FileIdRegex().Match(html);
         if (!idMatch.Success)
-            throw new BunkrException("Die Datei-ID wurde nicht gefunden.");
+            throw new BunkrException("The file id was not found.");
 
-        var title = ExtractTitle(html, "Datei");
+        var title = ExtractTitle(html, "File");
         var original = title.EndsWith("| Bunkr", StringComparison.OrdinalIgnoreCase)
             ? title[..title.LastIndexOf('|')].Trim()
             : title;
         if (string.IsNullOrWhiteSpace(original))
-            original = "datei";
+            original = "file";
 
         var file = new BunkrFile(
             idMatch.Groups[1].Value,
@@ -56,11 +56,11 @@ public static partial class AlbumParser
         const string marker = "window.albumFiles";
         var start = html.IndexOf(marker, StringComparison.Ordinal);
         if (start < 0)
-            throw new BunkrException("Keine Dateiliste gefunden. Advanced-Ansicht fehlt auf der Albumseite.");
+            throw new BunkrException("No file list found. The album page has no advanced view.");
 
         var bracket = html.IndexOf('[', start);
         if (bracket < 0)
-            throw new BunkrException("Die Dateiliste ist unvollständig.");
+            throw new BunkrException("The file list is incomplete.");
 
         var end = FindMatchingBracket(html, bracket);
         var body = html[bracket..(end + 1)];
@@ -100,7 +100,7 @@ public static partial class AlbumParser
             if (encrypted)
             {
                 if (!root.TryGetProperty("timestamp", out var stamp) || !stamp.TryGetInt64(out var timestamp))
-                    throw new BunkrException("Verschlüsselte Antwort ohne Zeitstempel.");
+                    throw new BunkrException("Encrypted response without a timestamp.");
                 return BunkrUrls.DecryptLegacyUrl(url, timestamp);
             }
 
@@ -108,7 +108,7 @@ public static partial class AlbumParser
                 return url;
         }
 
-        throw new BunkrException("Bunkr hat keine Download-Adresse geliefert.");
+        throw new BunkrException("Bunkr did not return a download address.");
     }
 
     public static (string Token, string Expires) ReadSignature(string signJson)
@@ -117,14 +117,14 @@ public static partial class AlbumParser
         var root = document.RootElement;
         var token = root.GetProperty("token").GetString();
         if (string.IsNullOrWhiteSpace(token))
-            throw new BunkrException("Signatur ohne Token.");
+            throw new BunkrException("Signature without a token.");
 
         if (!root.TryGetProperty("ex", out var ex))
-            throw new BunkrException("Signatur ohne Ablaufzeit.");
+            throw new BunkrException("Signature without an expiry.");
 
         var expires = ex.ValueKind == JsonValueKind.String ? ex.GetString() : ex.GetRawText();
         if (string.IsNullOrWhiteSpace(expires))
-            throw new BunkrException("Signatur ohne Ablaufzeit.");
+            throw new BunkrException("Signature without an expiry.");
         return (token, expires);
     }
 
@@ -136,7 +136,7 @@ public static partial class AlbumParser
         if (string.IsNullOrWhiteSpace(original))
             original = name;
         if (string.IsNullOrWhiteSpace(id))
-            throw new BunkrException("Eine Datei hat keine ID.");
+            throw new BunkrException("A file has no id.");
 
         long size = 0;
         if (item.TryGetProperty("size", out var sizeNode) && sizeNode.TryGetInt64(out var parsed))
@@ -194,7 +194,7 @@ public static partial class AlbumParser
         }
 
         if (files.Count == 0)
-            throw new BunkrException("Die Dateiliste konnte nicht gelesen werden.");
+            throw new BunkrException("The file list could not be read.");
         return files;
     }
 
@@ -314,7 +314,7 @@ public static partial class AlbumParser
             }
         }
 
-        throw new BunkrException("Die Dateiliste ist unvollständig.");
+        throw new BunkrException("The file list is incomplete.");
     }
 
     [GeneratedRegex(@"(?:https?://dl\.bunkr\.\w+)?/file/(\d+)", RegexOptions.IgnoreCase)]

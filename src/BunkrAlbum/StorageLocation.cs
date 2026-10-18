@@ -73,16 +73,16 @@ static class StorageLocation
             var uri = Android.Net.Uri.Parse(treeUri);
             var docId = uri is null ? null : DocumentsContract.GetTreeDocumentId(uri);
             if (string.IsNullOrEmpty(docId))
-                return "Gewählter Ordner";
+                return "Selected folder";
 
             var colon = docId.IndexOf(':');
             var path = colon >= 0 ? docId[(colon + 1)..] : docId;
             path = Android.Net.Uri.Decode(path) ?? path;
-            return string.IsNullOrWhiteSpace(path) ? "Gewählter Ordner" : path;
+            return string.IsNullOrWhiteSpace(path) ? "Selected folder" : path;
         }
         catch (Exception)
         {
-            return "Gewählter Ordner";
+            return "Selected folder";
         }
     }
 }

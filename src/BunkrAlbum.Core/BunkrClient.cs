@@ -18,7 +18,7 @@ public sealed class BunkrClient : IDisposable
             : new HttpClient(handler);
         _http.Timeout = Timeout.InfiniteTimeSpan;
         _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
-        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "de,en;q=0.8");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en");
     }
 
     public async Task<AlbumInfo> OpenAsync(string input, CancellationToken cancellationToken = default)
@@ -82,7 +82,7 @@ public sealed class BunkrClient : IDisposable
             }
         }
 
-        throw new BunkrException("Download-Link konnte nicht erzeugt werden.", last!);
+        throw new BunkrException("Could not create the download link.", last!);
     }
 
     public void Dispose() => _http.Dispose();
@@ -120,17 +120,17 @@ public sealed class BunkrClient : IDisposable
         }
 
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
-            throw new BunkrException("Der Download-Link wurde abgelehnt.");
+            throw new BunkrException("The download link was rejected.");
 
         var decision = BunkrUrls.DecideRange(offset, (int)response.StatusCode, destination.CanSeek);
         if (offset > 0 && response.StatusCode == HttpStatusCode.OK && !decision.Truncate)
-            throw new BunkrException("Die Datei muss neu geladen werden.");
+            throw new BunkrException("The file has to be downloaded again.");
         if (!decision.AlreadyComplete && response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.PartialContent))
-            throw new BunkrException("Download-Server antwortet mit " + (int)response.StatusCode + ".");
+            throw new BunkrException("The download server returned HTTP " + (int)response.StatusCode + ".");
 
         var mediaType = response.Content.Headers.ContentType?.MediaType ?? "";
         if (mediaType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
-            throw new BunkrException("Der Server hat keine Datei geliefert. Signatur oder Wartung prüfen.");
+            throw new BunkrException("The server did not return a file. Check the signature or try again later.");
 
         if (decision.AlreadyComplete)
         {
@@ -177,15 +177,15 @@ public sealed class BunkrClient : IDisposable
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             var text = await response.Content.ReadAsStringAsync(timeout.Token);
             if (!response.IsSuccessStatusCode)
-                throw new BunkrException("Bunkr antwortet mit HTTP " + (int)response.StatusCode + ".");
+                throw new BunkrException("Bunkr returned HTTP " + (int)response.StatusCode + ".");
             if (text.Contains("Just a moment", StringComparison.OrdinalIgnoreCase) &&
                 text.Contains("cloudflare", StringComparison.OrdinalIgnoreCase))
-                throw new BunkrException("Cloudflare hat die Anfrage blockiert. Später erneut versuchen.");
+                throw new BunkrException("Cloudflare blocked the request. Try again later.");
             return text;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new BunkrException("Zeitüberschreitung bei der Anfrage an Bunkr.");
+            throw new BunkrException("The request to Bunkr timed out.");
         }
     }
 }

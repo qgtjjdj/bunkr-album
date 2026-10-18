@@ -19,7 +19,7 @@ static class DownloadNotes
             return;
         var channel = new NotificationChannel(ChannelId, "Downloads", NotificationImportance.Low)
         {
-            Description = "Laufende Album-Downloads"
+            Description = "Ongoing album downloads"
         };
         manager?.CreateNotificationChannel(channel);
     }
@@ -67,7 +67,7 @@ public class DownloadService : Service
             if (!Alive)
             {
                 DownloadHub.FinishPaused(this);
-                ShowFinal(DownloadHub.Session?.Summary ?? "Pausiert.", paused: true);
+                ShowFinal(DownloadHub.Session?.Summary ?? "Paused.", paused: true);
                 StopSelf();
                 return StartCommandResult.NotSticky;
             }
@@ -87,7 +87,7 @@ public class DownloadService : Service
             return StartCommandResult.NotSticky;
         }
 
-        var label = DownloadHub.Session?.Summary ?? "Download startet …";
+        var label = DownloadHub.Session?.Summary ?? "Download starting…";
         EnsureForeground(label);
         lock (_gate)
         {
@@ -129,7 +129,7 @@ public class DownloadService : Service
                     var session = DownloadHub.Session;
                     var done = session is null ? 0 : session.SavedCount + session.SkippedCount;
                     var total = session?.Items.Count ?? 0;
-                    DownloadHub.SetSummary($"Wartet auf WLAN · {done}/{total}");
+                    DownloadHub.SetSummary($"Waiting for Wi-Fi · {done}/{total}");
                     UpdateNote(DownloadHub.Session, true);
                     await Task.Delay(2000, token);
                     continue;
@@ -194,14 +194,14 @@ public class DownloadService : Service
         if (stop == StopKind.Cancel)
         {
             DownloadHub.FinishCancelled(this);
-            Shutdown("Abgebrochen.", paused: false);
+            Shutdown("Cancelled.", paused: false);
             return;
         }
 
         if (stop == StopKind.Pause || DownloadHub.PauseRequested)
         {
             DownloadHub.FinishPaused(this);
-            Shutdown(DownloadHub.Session?.Summary ?? "Pausiert.", paused: true);
+            Shutdown(DownloadHub.Session?.Summary ?? "Paused.", paused: true);
             return;
         }
 
@@ -211,8 +211,8 @@ public class DownloadService : Service
         var failed = session?.FailedCount ?? 0;
         var place = session?.Items.LastOrDefault(item => item.IsDone)?.Place ?? StorageLocation.DefaultLabel;
         var summary = failed == 0
-            ? $"Fertig. {saved + skipped} Dateien unter {place}."
-            : $"Fertig. {saved + skipped} gespeichert, {failed} fehlgeschlagen.";
+            ? $"Done. {saved + skipped} files in {place}."
+            : $"Done. {saved + skipped} saved, {failed} failed.";
         DownloadHub.FinishDone(this, summary);
         Shutdown(summary, paused: false);
     }
@@ -228,7 +228,7 @@ public class DownloadService : Service
         {
             var pausing = DownloadHub.PauseRequested;
             item.Phase = pausing ? WorkPhase.Pending : WorkPhase.Failed;
-            item.Status = pausing ? "Pausiert" : "Abgebrochen";
+            item.Status = pausing ? "Paused" : "Cancelled";
             if (!pausing)
                 PartFiles.Delete(this, item);
             DownloadHub.Publish(this, persist: true);
@@ -246,7 +246,7 @@ public class DownloadService : Service
         if (existing is > 0 && (item.File.Size <= 0 || existing.Value >= item.File.Size))
         {
             item.Phase = WorkPhase.Skipped;
-            item.Status = "Schon da";
+            item.Status = "Already saved";
             PartFiles.Delete(this, item);
             Touch(item, true);
             return;
@@ -257,7 +257,7 @@ public class DownloadService : Service
         for (var attempt = 1; attempt <= 2; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            item.Status = attempt == 1 ? "Verbinde …" : "Neuer Versuch …";
+            item.Status = attempt == 1 ? "Connecting…" : "Retrying…";
             Touch(item, true);
             try
             {
@@ -298,7 +298,7 @@ public class DownloadService : Service
                 }, cancellationToken);
                 PartFiles.Delete(this, item);
                 item.Phase = WorkPhase.Saved;
-                item.Status = "Gespeichert";
+                item.Status = "Saved";
                 Touch(item, true);
                 return;
             }
@@ -313,7 +313,7 @@ public class DownloadService : Service
         }
 
         item.Phase = WorkPhase.Failed;
-        item.Status = last?.Message ?? "Fehler";
+        item.Status = last?.Message ?? "Failed";
         Touch(item, true);
     }
 
@@ -412,9 +412,9 @@ public class DownloadService : Service
         if (ongoing)
             AddAction(builder, "Pause", ServiceIntent(ActionPause, 3));
         else if (paused)
-            AddAction(builder, "Fortsetzen", ServiceIntent(ActionResume, 4));
+            AddAction(builder, "Resume", ServiceIntent(ActionResume, 4));
         if (ongoing || paused)
-            AddAction(builder, "Abbrechen", cancel);
+            AddAction(builder, "Cancel", cancel);
         return builder.Build();
     }
 

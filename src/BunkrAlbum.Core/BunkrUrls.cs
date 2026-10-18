@@ -11,25 +11,25 @@ public static class BunkrUrls
     {
         var text = (input ?? "").Trim();
         if (text.Length == 0)
-            throw new BunkrException("Bitte einen Bunkr-Link einfügen.");
+            throw new BunkrException("Paste a Bunkr link.");
 
         if (!text.Contains("://", StringComparison.Ordinal))
             text = "https://" + text;
 
         if (!Uri.TryCreate(text, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host))
-            throw new BunkrException("Die URL ist ungültig.");
+            throw new BunkrException("The URL is invalid.");
 
         var host = uri.Host.ToLowerInvariant();
         if (!host.Contains("bunkr", StringComparison.Ordinal) && !host.Contains("bunkrr", StringComparison.Ordinal))
-            throw new BunkrException("Das ist kein Bunkr-Link.");
+            throw new BunkrException("This is not a Bunkr link.");
 
         var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2)
-            throw new BunkrException("Bitte einen Album-Link (/a/…) oder Datei-Link (/f/…) verwenden.");
+            throw new BunkrException("Use an album link (/a/…) or a file link (/f/…).");
 
         var section = parts[0].ToLowerInvariant();
         if (section is not ("a" or "f" or "v" or "d" or "i"))
-            throw new BunkrException("Bitte einen Album-Link (/a/…) oder Datei-Link (/f/…) verwenden.");
+            throw new BunkrException("Use an album link (/a/…) or a file link (/f/…).");
 
         var origin = uri.GetLeftPart(UriPartial.Authority);
         return new BunkrLink(origin, section, Uri.UnescapeDataString(parts[1]));
@@ -38,7 +38,7 @@ public static class BunkrUrls
     public static string CombineMedia(string mediafiles, string path)
     {
         if (string.IsNullOrWhiteSpace(mediafiles) || string.IsNullOrWhiteSpace(path))
-            throw new BunkrException("Die Download-Adresse ist unvollständig.");
+            throw new BunkrException("The download address is incomplete.");
         return mediafiles.TrimEnd('/') + "/" + path.TrimStart('/');
     }
 
@@ -67,7 +67,7 @@ public static class BunkrUrls
         }
         catch (FormatException ex)
         {
-            throw new BunkrException("Verschlüsselte Download-URL ist ungültig.", ex);
+            throw new BunkrException("The encrypted download URL is invalid.", ex);
         }
 
         var key = Encoding.UTF8.GetBytes("SECRET_KEY_" + (timestamp / 3600));
@@ -76,7 +76,7 @@ public static class BunkrUrls
 
         var url = Encoding.UTF8.GetString(data);
         if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            throw new BunkrException("Verschlüsselte Download-URL konnte nicht gelesen werden.");
+            throw new BunkrException("The encrypted download URL could not be read.");
         return url;
     }
 
@@ -120,7 +120,7 @@ public static class BunkrUrls
     public static string SanitizeFileName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
-            return "datei";
+            return "file";
 
         var invalid = Path.GetInvalidFileNameChars();
         var buffer = new char[name.Length];
@@ -132,7 +132,7 @@ public static class BunkrUrls
 
         var cleaned = new string(buffer).Trim().Trim('.');
         if (cleaned.Length == 0)
-            return "datei";
+            return "file";
         return cleaned.Length <= 180 ? cleaned : cleaned[^180..];
     }
 

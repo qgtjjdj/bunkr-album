@@ -7,14 +7,14 @@ public class AlbumParserTests
 {
     const string AlbumHtml = """
         <html><head>
-        <meta property="og:title" content="Beispiel &amp; Album">
+        <meta property="og:title" content="Example &amp; Album">
         </head><body>
         <script>
         window.albumFiles = [
         {
           id:  42 ,
           name: "photo-a.jpg",
-          original: "foto: eins \"x\".jpg",
+          original: "photo: one \"x\".jpg",
           slug: "photo-a.jpg",
           type: "image/jpeg",
           extension: "Image",
@@ -45,10 +45,10 @@ public class AlbumParserTests
     {
         var album = AlbumParser.ParseAlbum("https://bunkr.cr/a/demo", AlbumHtml);
 
-        Assert.Equal("Beispiel & Album", album.Title);
+        Assert.Equal("Example & Album", album.Title);
         Assert.Equal(2, album.Files.Count);
         Assert.Equal("42", album.Files[0].Id);
-        Assert.Equal("foto: eins \"x\".jpg", album.Files[0].Original);
+        Assert.Equal("photo: one \"x\".jpg", album.Files[0].Original);
         Assert.Equal(69038, album.Files[0].Size);
         Assert.Equal("video/mp4", album.Files[1].Type);
         Assert.Equal("1 MB", BunkrUrls.FormatSize(album.Files[1].Size));
@@ -102,14 +102,14 @@ public class AlbumParserTests
     public void Rejects_other_hosts()
     {
         var error = Assert.Throws<BunkrException>(() => BunkrUrls.Parse("https://example.com/a/1"));
-        Assert.Contains("kein Bunkr", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not a Bunkr", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void Sanitizes_file_names()
     {
         Assert.Equal("a_b.jpg", BunkrUrls.SanitizeFileName("a/b.jpg"));
-        Assert.Equal("datei", BunkrUrls.SanitizeFileName("   "));
+        Assert.Equal("file", BunkrUrls.SanitizeFileName("   "));
     }
 
     [Fact]

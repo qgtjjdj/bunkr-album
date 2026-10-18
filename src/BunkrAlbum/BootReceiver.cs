@@ -24,7 +24,7 @@ public class BootReceiver : BroadcastReceiver
         var notification = new Notification.Builder(context, DownloadNotes.ChannelId)
             .SetSmallIcon(Android.Resource.Drawable.StatSysDownload)
             .SetContentTitle("Bunkr Album")
-            .SetContentText("Download unterbrochen. Tippen zum Fortsetzen.")
+            .SetContentText("Download interrupted. Tap to resume.")
             .SetContentIntent(open)
             .SetAutoCancel(true)
             .Build();

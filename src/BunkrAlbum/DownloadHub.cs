@@ -26,7 +26,7 @@ sealed class WorkItem
     public required string Place { get; init; }
     public string? TreeUri { get; init; }
     public WorkPhase Phase { get; set; } = WorkPhase.Pending;
-    public string Status { get; set; } = "Wartet";
+    public string Status { get; set; } = "Waiting";
     public long LastUi { get; set; }
 
     public bool IsDone => Phase is WorkPhase.Saved or WorkPhase.Skipped;
@@ -38,7 +38,7 @@ sealed class DownloadSession
     public bool Running { get; set; }
     public bool ServiceAlive { get; set; }
     public bool Paused { get; set; }
-    public string Summary { get; set; } = "Download startet …";
+    public string Summary { get; set; } = "Download starting…";
 
     public string Title
     {
@@ -47,14 +47,14 @@ sealed class DownloadSession
             var titles = Items.Select(item => item.AlbumTitle).Distinct().ToList();
             if (titles.Count == 0)
                 return "Bunkr Album";
-            return titles.Count == 1 ? titles[0] : "Warteschlange · " + titles.Count + " Alben";
+            return titles.Count == 1 ? titles[0] : "Queue · " + titles.Count + " albums";
         }
     }
 
     public int SavedCount => Items.Count(item => item.Phase == WorkPhase.Saved);
     public int SkippedCount => Items.Count(item => item.Phase == WorkPhase.Skipped);
     public int FailedCount => Items.Count(item => item.Phase == WorkPhase.Failed);
-    public bool HasPending => Items.Any(item => !item.IsDone && item.Status != "Abgebrochen");
+    public bool HasPending => Items.Any(item => !item.IsDone && item.Status != "Cancelled");
 }
 
 static class DownloadHub
@@ -110,7 +110,7 @@ static class DownloadHub
                 var known = Session.Items.Any(existing =>
                     existing.File.Id == item.File.Id &&
                     existing.SaveName == item.SaveName &&
-                    existing.Status != "Abgebrochen");
+                    existing.Status != "Cancelled");
                 if (!known)
                     Session.Items.Add(item);
             }
@@ -150,7 +150,7 @@ static class DownloadHub
             {
                 if (item.Phase == WorkPhase.Active)
                     item.Phase = WorkPhase.Pending;
-                if (item.Phase == WorkPhase.Failed && item.Status != "Abgebrochen")
+                if (item.Phase == WorkPhase.Failed && item.Status != "Cancelled")
                     item.Phase = WorkPhase.Pending;
             }
 
@@ -229,8 +229,8 @@ static class DownloadHub
             Session.Running = false;
             Session.ServiceAlive = false;
             Session.Paused = true;
-            var open = Session.Items.Count(item => !item.IsDone && item.Status != "Abgebrochen");
-            Session.Summary = open == 0 ? "Pausiert." : $"Pausiert. {open} offen.";
+            var open = Session.Items.Count(item => !item.IsDone && item.Status != "Cancelled");
+            Session.Summary = open == 0 ? "Paused." : $"Paused. {open} left.";
             QueueStore.Save(context, Session);
         }
 
@@ -245,17 +245,17 @@ static class DownloadHub
             {
                 foreach (var item in Session.Items)
                 {
-                    if (item.IsDone || item.Status == "Abgebrochen")
+                    if (item.IsDone || item.Status == "Cancelled")
                         continue;
                     item.Phase = WorkPhase.Failed;
-                    item.Status = "Abgebrochen";
+                    item.Status = "Cancelled";
                     PartFiles.Delete(context, item);
                 }
 
                 Session.Running = false;
                 Session.ServiceAlive = false;
                 Session.Paused = false;
-                Session.Summary = "Abgebrochen.";
+                Session.Summary = "Cancelled.";
             }
 
             QueueStore.Delete(context);

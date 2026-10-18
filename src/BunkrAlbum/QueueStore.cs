@@ -24,7 +24,7 @@ static class PartFiles
 {
     public static string PathFor(Context context, WorkItem item)
     {
-        var root = context.FilesDir?.AbsolutePath ?? throw new BunkrException("Kein App-Speicher verfügbar.");
+        var root = context.FilesDir?.AbsolutePath ?? throw new BunkrException("No app storage is available.");
         var dir = Path.Combine(root, "partials");
         Directory.CreateDirectory(dir);
         var key = item.File.Id + "|" + item.SaveName;
@@ -108,7 +108,7 @@ static class QueueStore
                     TreeUri = item.TreeUri,
                     SaveName = item.SaveName,
                     Phase = phase,
-                    Status = string.IsNullOrWhiteSpace(item.Status) ? "Wartet" : item.Status,
+                    Status = string.IsNullOrWhiteSpace(item.Status) ? "Waiting" : item.Status,
                     File = new BunkrFile(
                         item.Id,
                         item.Name,
@@ -122,10 +122,10 @@ static class QueueStore
                 });
             }
 
-            var open = session.Items.Count(candidate => !candidate.IsDone && candidate.Status != "Abgebrochen");
+            var open = session.Items.Count(candidate => !candidate.IsDone && candidate.Status != "Cancelled");
             session.Summary = session.Paused
-                ? (open == 0 ? "Pausiert." : $"Pausiert. {open} offen.")
-                : (open == 0 ? "Fertig." : $"{session.SavedCount + session.SkippedCount}/{session.Items.Count} bereit");
+                ? (open == 0 ? "Paused." : $"Paused. {open} left.")
+                : (open == 0 ? "Done." : $"{session.SavedCount + session.SkippedCount}/{session.Items.Count} ready");
             return session.Items.Count == 0 ? null : session;
         }
         catch (Exception)
@@ -175,6 +175,6 @@ static class QueueStore
         public string Thumbnail { get; set; } = "";
         public string SaveName { get; set; } = "";
         public string Phase { get; set; } = nameof(WorkPhase.Pending);
-        public string Status { get; set; } = "Wartet";
+        public string Status { get; set; } = "Waiting";
     }
 }

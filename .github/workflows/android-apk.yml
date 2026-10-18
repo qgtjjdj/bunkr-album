@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             dotnet workload install android && exit 0
-            echo "Workload-Installation fehlgeschlagen, Versuch ${attempt}"
+            echo "Workload install failed, attempt ${attempt}"
             sleep 15
           done
           exit 1
@@ -95,7 +95,7 @@ jobs:
           mkdir -p dist
           mapfile -t apks < <(find src/BunkrAlbum/bin -type f -name '*Signed.apk' | sort)
           if [ "${#apks[@]}" -eq 0 ]; then
-            echo "Keine signierte APK gefunden"
+            echo "No signed APK found"
             find src/BunkrAlbum/bin -type f -name '*.apk' -print
             exit 1
           fi

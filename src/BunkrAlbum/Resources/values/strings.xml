@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="app_name">Bunkr Album</string>
-  <string name="subtitle">Album-Link einfügen. Den Speicherort kannst du ändern.</string>
+  <string name="subtitle">Paste an album link. You can change the save folder.</string>
   <string name="url_hint">https://bunkr.cr/a/…</string>
-  <string name="load">Album laden</string>
-  <string name="cancel">Abbrechen</string>
+  <string name="load">Load album</string>
+  <string name="cancel">Cancel</string>
   <string name="pause">Pause</string>
-  <string name="download">Herunterladen</string>
-  <string name="select_all">Alle auswählen</string>
-  <string name="change_location">Ändern</string>
-  <string name="filter_all">Alle</string>
-  <string name="filter_images">Bilder</string>
+  <string name="download">Download</string>
+  <string name="select_all">Select all</string>
+  <string name="change_location">Change</string>
+  <string name="filter_all">All</string>
+  <string name="filter_images">Images</string>
   <string name="filter_videos">Videos</string>
-  <string name="wifi_only">Nur über WLAN</string>
+  <string name="wifi_only">Wi-Fi only</string>
 </resources>

@@ -138,13 +138,13 @@ public class MainActivity : Activity
         }
         catch (Exception)
         {
-            Toast.MakeText(this, "Der Ordner konnte nicht gemerkt werden.", ToastLength.Long)?.Show();
+            Toast.MakeText(this, "The folder could not be remembered.", ToastLength.Long)?.Show();
             return;
         }
 
         StorageLocation.Save(this, uri.ToString() ?? "");
         UpdateLocationLabel();
-        _status.Text = "Speichert nach " + StorageLocation.Describe(uri.ToString());
+        _status.Text = "Saving to " + StorageLocation.Describe(uri.ToString());
     }
 
     protected override void OnResume()
@@ -173,9 +173,9 @@ public class MainActivity : Activity
         }
 
         new AlertDialog.Builder(this)?
-            .SetTitle("Speicherort")?
+            .SetTitle("Save location")?
             .SetItems(
-                ["Anderen Ordner wählen", "Standard: Download/Bunkr"],
+                ["Choose another folder", "Default: Download/Bunkr"],
                 (_, e) =>
                 {
                     if (e.Which == 0)
@@ -202,7 +202,7 @@ public class MainActivity : Activity
         }
         catch (Exception)
         {
-            Toast.MakeText(this, "Die Ordnerauswahl ist nicht verfügbar.", ToastLength.Long)?.Show();
+            Toast.MakeText(this, "The folder picker is not available.", ToastLength.Long)?.Show();
         }
     }
 
@@ -210,7 +210,7 @@ public class MainActivity : Activity
     {
         StorageLocation.Clear(this);
         UpdateLocationLabel();
-        _status.Text = "Speichert nach " + StorageLocation.DefaultLabel;
+        _status.Text = "Saving to " + StorageLocation.DefaultLabel;
     }
 
     void UpdateLocationLabel()
@@ -228,7 +228,7 @@ public class MainActivity : Activity
 
         StorageLocation.Clear(this);
         UpdateLocationLabel();
-        Toast.MakeText(this, "Zugriff auf den Ordner ist weg. Bitte neu wählen.", ToastLength.Long)?.Show();
+        Toast.MakeText(this, "Access to the folder is gone. Choose it again.", ToastLength.Long)?.Show();
         treeUri = null;
         return false;
     }
@@ -245,7 +245,7 @@ public class MainActivity : Activity
         _rows.Clear();
         BindRows();
         _title.Text = "";
-        _status.Text = "Album wird gelesen …";
+        _status.Text = "Reading album…";
         _selectAll.Visibility = Android.Views.ViewStates.Gone;
 
         try
@@ -253,7 +253,7 @@ public class MainActivity : Activity
             var album = await _client.OpenAsync(input, ct);
             _rows.AddRange(album.Files.Select(file => new FileRow { File = file }));
             _title.Text = album.Title;
-            _status.Text = album.Files.Count + " Dateien";
+            _status.Text = album.Files.Count == 1 ? "1 file" : album.Files.Count + " files";
             _suppressSelectAll = true;
             _selectAll.Checked = true;
             _suppressSelectAll = false;
@@ -264,7 +264,7 @@ public class MainActivity : Activity
         }
         catch (OperationCanceledException)
         {
-            _status.Text = "Abgebrochen.";
+            _status.Text = "Cancelled.";
         }
         catch (Exception ex)
         {
@@ -289,7 +289,7 @@ public class MainActivity : Activity
                 return;
             }
 
-            Toast.MakeText(this, "Keine Datei ausgewählt.", ToastLength.Short)?.Show();
+            Toast.MakeText(this, "No file selected.", ToastLength.Short)?.Show();
             return;
         }
 
@@ -302,7 +302,7 @@ public class MainActivity : Activity
         foreach (var row in selected)
         {
             var index = _rows.IndexOf(row) + 1;
-            row.Status = "Wartet";
+            row.Status = "Waiting";
             items.Add(new WorkItem
             {
                 File = row.File,
@@ -470,13 +470,13 @@ public class MainActivity : Activity
         var running = DownloadHub.IsRunning;
         var pending = DownloadHub.HasPending;
         if (running && count > 0)
-            _download.Text = $"Zur Warteschlange ({count})";
+            _download.Text = $"Add to queue ({count})";
         else if (!running && pending && count == 0)
-            _download.Text = "Fortsetzen";
+            _download.Text = "Resume";
         else if (!running && pending)
-            _download.Text = $"Fortsetzen ({count})";
+            _download.Text = $"Resume ({count})";
         else
-            _download.Text = count > 0 ? $"Herunterladen ({count})" : "Herunterladen";
+            _download.Text = count > 0 ? $"Download ({count})" : "Download";
 
         _download.Enabled = !_busy && (count > 0 || (pending && !running));
         _cancel.Enabled = _busy || running || pending;
@@ -509,7 +509,7 @@ public class MainActivity : Activity
     }
 
     T RequireView<T>(int id) where T : Android.Views.View
-        => FindViewById<T>(id) ?? throw new InvalidOperationException("View fehlt: " + id);
+        => FindViewById<T>(id) ?? throw new InvalidOperationException("Missing view: " + id);
 }
 
 enum FileFilter

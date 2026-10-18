@@ -1,26 +1,26 @@
 # Bunkr Album
 
-Android-App in C# (**.NET 10 / .NET for Android**). Ein öffentlicher Bunkr-Album- oder Datei-Link wird gelesen, die Dateien lassen sich auswählen und werden gespeichert. Standardordner ist **Download/Bunkr**, über **Ändern** ein anderer Ordner. Ein laufender Download geht im Hintergrund weiter. Pause, Fortsetzen und Abbrechen stehen in der App und in der Benachrichtigung. Nach einem Neustart des Handys erinnert eine Benachrichtigung daran, den Lauf fortzusetzen; angefangene Dateien werden weitergeladen, schon vorhandene übersprungen. Weitere Alben können in die Warteschlange. Filter: Alle, Bilder, Videos. Optional nur über WLAN. Ein Link lässt sich aus dem Browser teilen oder direkt öffnen.
+Android app in C# (**.NET 10 / .NET for Android**). Paste a public Bunkr album or file link, pick the files, and save them. The default folder is **Download/Bunkr**. **Change** opens the system folder picker and the choice is remembered.
 
-Die Signatur bleibt gleich, sobald die Repository-Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` und `ANDROID_KEY_PASSWORD` gesetzt sind. Danach lassen sich Updates über die installierte App legen. Ohne diese Secrets erzeugt jeder Lauf ein neues Zertifikat, und ein Update geht nur nach dem Deinstallieren.
+Downloads keep running in the background. Pause, resume, and cancel are in the app and in the notification, which also shows speed. An interrupted file continues later, including after a reboot (a notification asks you to resume). Files that are already saved are skipped. More albums can be added to the queue. Filters: All, Images, Videos. Optional Wi-Fi only. Open a link from the browser or share it into the app.
 
-Beispiel: `https://bunkr.cr/a/cpdYatJu`
+The signing key stays the same once the repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD` are set. Updates can then install over the existing app. Without those secrets every build uses a new certificate, and an update requires uninstalling first.
 
-Die App spricht die öffentliche Albumseite (`?advanced=1`) an, holt zu jeder Datei-ID einen CDN-Pfad über `https://dl.bunkr.cr/api/_001_v2` und signiert ihn über `https://glb-apisign.cdn.cr/sign`. Es werden nur Dateien gespeichert, die der Link bereits öffentlich anbietet.
+Example: `https://bunkr.cr/a/cpdYatJu`
 
-Nur Inhalte herunterladen, die du verwenden darfst.
+The app reads the public album page (`?advanced=1`), asks `https://dl.bunkr.cr/api/_001_v2` for a CDN path per file id, and signs it via `https://glb-apisign.cdn.cr/sign`. It only saves files the link already exposes publicly.
+
+Only download content you are allowed to use.
 
 ## APK
 
-Jeder Push auf `main` startet [Build APK](.github/workflows/android-apk.yml). Die fertige Datei liegt danach als Artifact **BunkrAlbum-apk** (`BunkrAlbum.apk`, arm64).
+Every push to `main` starts [Build APK](.github/workflows/android-apk.yml). The file is attached as the **BunkrAlbum-apk** artifact (`BunkrAlbum.apk`, arm64). Releases also attach that APK.
 
-1. Actions öffnen und den Lauf abwarten.
-2. Artifact herunterladen und die APK auf dem Handy installieren.
-3. Installation aus unbekannten Quellen erlauben.
+1. Wait for the workflow to finish.
+2. Download the APK and install it.
+3. Allow installs from unknown sources.
 
-Ohne die Signatur-Secrets erzeugt der Lauf ein Wegwerf-Zertifikat. Ein Update geht dann nur nach dem Deinstallieren.
-
-## Lokal
+## Local
 
 ```bash
 dotnet test tests/BunkrAlbum.Core.Tests/BunkrAlbum.Core.Tests.csproj
@@ -29,4 +29,4 @@ dotnet build src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net10.0-android -t:I
 dotnet publish src/BunkrAlbum/BunkrAlbum.csproj -c Release -f net10.0-android
 ```
 
-JDK 21. Ziel ist `net10.0-android`, arm64, min. Android 8 (API 26).
+JDK 21. Target is `net10.0-android`, arm64, minimum Android 8 (API 26).
