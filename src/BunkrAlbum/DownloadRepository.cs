@@ -90,6 +90,87 @@ static class DownloadRepository
         return target.IsFile ? target.Length() : null;
     }
 
+    public static string? FindUri(Context context, string? treeUri, string displayName)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(treeUri))
+                return FindTreeUri(context, treeUri, displayName);
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
+                return FindMediaStoreUri(context, displayName);
+            return FindAppFolderUri(context, displayName);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    static string? FindTreeUri(Context context, string treeUri, string displayName)
+    {
+        var resolver = context.ContentResolver;
+        var tree = Android.Net.Uri.Parse(treeUri);
+        if (resolver is null || tree is null)
+            return null;
+        var rootId = DocumentsContract.GetTreeDocumentId(tree);
+        if (string.IsNullOrEmpty(rootId))
+            return null;
+        var children = DocumentsContract.BuildChildDocumentsUriUsingTree(tree, rootId);
+        if (children is null)
+            return null;
+        using var cursor = resolver.Query(
+            children,
+            [DocumentsContract.Document.ColumnDisplayName, DocumentsContract.Document.ColumnDocumentId],
+            null,
+            null,
+            null);
+        if (cursor is null)
+            return null;
+        var nameIndex = cursor.GetColumnIndex(DocumentsContract.Document.ColumnDisplayName);
+        var idIndex = cursor.GetColumnIndex(DocumentsContract.Document.ColumnDocumentId);
+        while (cursor.MoveToNext())
+        {
+            if (nameIndex < 0 || idIndex < 0 || cursor.GetString(nameIndex) != displayName)
+                continue;
+            var id = cursor.GetString(idIndex);
+            if (!string.IsNullOrEmpty(id))
+                return DocumentsContract.BuildDocumentUriUsingTree(tree, id)?.ToString();
+        }
+
+        return null;
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("android29.0")]
+    static string? FindMediaStoreUri(Context context, string displayName)
+    {
+        var resolver = context.ContentResolver;
+        if (resolver is null)
+            return null;
+        foreach (var relative in new[] { "Download/Bunkr/", "Download/Bunkr" })
+        {
+            using var cursor = resolver.Query(
+                MediaStore.Downloads.ExternalContentUri,
+                [MediaStore.IMediaColumns.Id],
+                MediaStore.IMediaColumns.DisplayName + "=? AND " + MediaStore.IMediaColumns.RelativePath + "=?",
+                [displayName, relative],
+                null);
+            if (cursor is null || !cursor.MoveToFirst() || cursor.IsNull(0))
+                continue;
+            return ContentUris.WithAppendedId(MediaStore.Downloads.ExternalContentUri, cursor.GetLong(0))?.ToString();
+        }
+
+        return null;
+    }
+
+    static string? FindAppFolderUri(Context context, string displayName)
+    {
+        var root = context.GetExternalFilesDir(Android.OS.Environment.DirectoryDownloads) ?? context.FilesDir;
+        if (root is null)
+            return null;
+        var target = new Java.IO.File(new Java.IO.File(root, "Bunkr"), displayName);
+        return target.IsFile ? target.AbsolutePath : null;
+    }
+
     public static async Task<string> SaveAsync(
         Context context,
         string? treeUri,
@@ -129,7 +210,7 @@ static class DownloadRepository
                 ?? throw new BunkrException("The file could not be created.");
             await write(stream, cancellationToken);
             await stream.FlushAsync(cancellationToken);
-            return StorageLocation.Describe(treeUriString) + "/" + displayName;
+            return fileUri.ToString() ?? displayName;
         }
         catch
         {
@@ -172,7 +253,7 @@ static class DownloadRepository
             var done = new ContentValues();
             done.Put(MediaStore.IMediaColumns.IsPending, 0);
             resolver.Update(uri, done, null, null);
-            return StorageLocation.DefaultLabel + "/" + displayName;
+            return uri.ToString() ?? displayName;
         }
         catch
         {

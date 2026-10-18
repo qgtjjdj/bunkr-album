@@ -29,6 +29,14 @@ public class TransferTests
         Assert.Null(BunkrUrls.ExtractUrl("https://example.com/a/nope"));
     }
 
+    [Theory]
+    [InlineData(100, 100, true)]
+    [InlineData(100, 99, false)]
+    [InlineData(0, 10, true)]
+    [InlineData(100, 0, false)]
+    public void Complete_means_the_full_file_arrived(long expected, long actual, bool complete)
+        => Assert.Equal(complete, BunkrUrls.IsComplete(expected, actual));
+
     [Fact]
     public void Kind_follows_the_mime_type()
     {

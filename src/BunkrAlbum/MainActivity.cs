@@ -50,9 +50,21 @@ public class MainActivity : Activity
     Button _filterAll = null!;
     Button _filterImages = null!;
     Button _filterVideos = null!;
+    EditText _search = null!;
+    LinearLayout _sortRow = null!;
+    Button _sortName = null!;
+    Button _sortSize = null!;
+    Button _sortType = null!;
+    Button _retry = null!;
+    Button _parallel1 = null!;
+    Button _parallel2 = null!;
+    Button _parallel3 = null!;
+    Button _parallel4 = null!;
     FileListAdapter? _adapter;
     CancellationTokenSource? _work;
     FileFilter _filter = FileFilter.All;
+    SortMode _sort = SortMode.Name;
+    string _query = "";
     bool _suppressSelectAll;
     bool _busy;
     long _lastDraw;
@@ -78,6 +90,16 @@ public class MainActivity : Activity
         _filterAll = RequireView<Button>(Resource.Id.filter_all);
         _filterImages = RequireView<Button>(Resource.Id.filter_images);
         _filterVideos = RequireView<Button>(Resource.Id.filter_videos);
+        _search = RequireView<EditText>(Resource.Id.search_input);
+        _sortRow = RequireView<LinearLayout>(Resource.Id.sort_row);
+        _sortName = RequireView<Button>(Resource.Id.sort_name);
+        _sortSize = RequireView<Button>(Resource.Id.sort_size);
+        _sortType = RequireView<Button>(Resource.Id.sort_type);
+        _retry = RequireView<Button>(Resource.Id.retry_button);
+        _parallel1 = RequireView<Button>(Resource.Id.parallel_1);
+        _parallel2 = RequireView<Button>(Resource.Id.parallel_2);
+        _parallel3 = RequireView<Button>(Resource.Id.parallel_3);
+        _parallel4 = RequireView<Button>(Resource.Id.parallel_4);
 
         _load.Click += async (_, _) => await LoadAlbumAsync();
         _download.Click += (_, _) => StartDownload();
@@ -96,6 +118,20 @@ public class MainActivity : Activity
         _filterAll.Click += (_, _) => SetFilter(FileFilter.All);
         _filterImages.Click += (_, _) => SetFilter(FileFilter.Images);
         _filterVideos.Click += (_, _) => SetFilter(FileFilter.Videos);
+        _sortName.Click += (_, _) => SetSort(SortMode.Name);
+        _sortSize.Click += (_, _) => SetSort(SortMode.Size);
+        _sortType.Click += (_, _) => SetSort(SortMode.Type);
+        _parallel1.Click += (_, _) => SetParallel(1);
+        _parallel2.Click += (_, _) => SetParallel(2);
+        _parallel3.Click += (_, _) => SetParallel(3);
+        _parallel4.Click += (_, _) => SetParallel(4);
+        _retry.Click += (_, _) => RetryFailed();
+        _search.TextChanged += (_, _) =>
+        {
+            _query = _search.Text?.Trim() ?? "";
+            BindRows();
+        };
+        _list.ItemClick += (_, e) => OpenRow(e.Position);
         _wifi.Checked = AppSettings.WifiOnly(this);
         _wifi.CheckedChange += (_, e) => AppSettings.SetWifiOnly(this, e.IsChecked);
         _selectAll.CheckedChange += (_, e) =>
@@ -108,6 +144,7 @@ public class MainActivity : Activity
             UpdateDownloadButton();
         };
         DownloadHub.EnsureLoaded(this);
+        PaintParallel();
         UpdateLocationLabel();
         DownloadHub.Changed += OnHubChanged;
         ApplySession();
@@ -378,6 +415,9 @@ public class MainActivity : Activity
                 File = item.File,
                 Status = item.Status,
                 Selected = true,
+                OpenUri = item.OpenUri,
+                SaveName = item.SaveName,
+                TreeUri = item.TreeUri,
             }));
             _suppressSelectAll = true;
             _selectAll.Checked = true;
@@ -390,7 +430,17 @@ public class MainActivity : Activity
         foreach (var row in _rows)
         {
             var item = session.Items.FirstOrDefault(candidate => candidate.File.Id == row.File.Id);
-            if (item is null || row.Status == item.Status)
+            if (item is null)
+                continue;
+            row.SaveName = item.SaveName;
+            row.TreeUri = item.TreeUri;
+            if (!string.IsNullOrEmpty(item.OpenUri) && row.OpenUri != item.OpenUri)
+            {
+                row.OpenUri = item.OpenUri;
+                changed = true;
+            }
+
+            if (row.Status == item.Status)
                 continue;
             row.Status = item.Status;
             changed = true;
@@ -405,15 +455,20 @@ public class MainActivity : Activity
     void BindRows()
     {
         _visible.Clear();
-        foreach (var row in _rows)
+        IEnumerable<FileRow> rows = _rows.Where(Matches);
+        rows = _sort switch
         {
-            if (Matches(row))
-                _visible.Add(row);
-        }
+            SortMode.Size => rows.OrderByDescending(row => row.File.Size).ThenBy(row => row.File.Original, StringComparer.OrdinalIgnoreCase),
+            SortMode.Type => rows.OrderBy(row => row.File.Extension, StringComparer.OrdinalIgnoreCase).ThenBy(row => row.File.Original, StringComparer.OrdinalIgnoreCase),
+            _ => rows.OrderBy(row => row.File.Original, StringComparer.OrdinalIgnoreCase),
+        };
+        _visible.AddRange(rows);
 
         var show = _rows.Count > 0 ? Android.Views.ViewStates.Visible : Android.Views.ViewStates.Gone;
         _selectAll.Visibility = show;
         _filterRow.Visibility = show;
+        _search.Visibility = show;
+        _sortRow.Visibility = show;
         if (_adapter is null)
         {
             _adapter = new FileListAdapter(this, _visible, SyncSelectAll);
@@ -425,7 +480,61 @@ public class MainActivity : Activity
         }
 
         PaintFilters();
+        PaintSort();
         UpdateDownloadButton();
+    }
+
+    void SetSort(SortMode sort)
+    {
+        _sort = sort;
+        BindRows();
+    }
+
+    void SetParallel(int value)
+    {
+        AppSettings.SetParallel(this, value);
+        PaintParallel();
+    }
+
+    void RetryFailed()
+    {
+        AskForNotifications();
+        var alive = DownloadHub.RequeueFailed(this);
+        if (!alive)
+            LaunchQueue();
+        ApplySession();
+    }
+
+    void OpenRow(int position)
+    {
+        if (position < 0 || position >= _visible.Count)
+            return;
+        var row = _visible[position];
+        if (row.Status is not ("Saved" or "Already saved"))
+            return;
+        var uriText = row.OpenUri;
+        if (string.IsNullOrEmpty(uriText) && !string.IsNullOrEmpty(row.SaveName))
+            uriText = DownloadRepository.FindUri(this, row.TreeUri, row.SaveName);
+        if (string.IsNullOrEmpty(uriText))
+        {
+            Toast.MakeText(this, "Cannot open this file.", ToastLength.Short)?.Show();
+            return;
+        }
+
+        var parsed = Android.Net.Uri.Parse(uriText.StartsWith('/') ? "file://" + uriText : uriText);
+        if (parsed is null)
+            return;
+        var view = new Intent(Intent.ActionView);
+        view.SetDataAndType(parsed, BunkrUrls.GuessMime(row.File));
+        view.AddFlags(ActivityFlags.GrantReadUriPermission);
+        try
+        {
+            StartActivity(view);
+        }
+        catch (Exception)
+        {
+            Toast.MakeText(this, "Cannot open this file.", ToastLength.Short)?.Show();
+        }
     }
 
     void SetFilter(FileFilter filter)
@@ -435,18 +544,36 @@ public class MainActivity : Activity
         SyncSelectAll();
     }
 
-    bool Matches(FileRow row) => _filter switch
+    bool Matches(FileRow row)
     {
-        FileFilter.Images => BunkrUrls.IsImage(row.File),
-        FileFilter.Videos => BunkrUrls.IsVideo(row.File),
-        _ => true,
-    };
+        if (_filter == FileFilter.Images && !BunkrUrls.IsImage(row.File))
+            return false;
+        if (_filter == FileFilter.Videos && !BunkrUrls.IsVideo(row.File))
+            return false;
+        return _query.Length == 0 || row.File.Original.Contains(_query, StringComparison.OrdinalIgnoreCase);
+    }
 
     void PaintFilters()
     {
         Paint(_filterAll, _filter == FileFilter.All);
         Paint(_filterImages, _filter == FileFilter.Images);
         Paint(_filterVideos, _filter == FileFilter.Videos);
+    }
+
+    void PaintSort()
+    {
+        Paint(_sortName, _sort == SortMode.Name);
+        Paint(_sortSize, _sort == SortMode.Size);
+        Paint(_sortType, _sort == SortMode.Type);
+    }
+
+    void PaintParallel()
+    {
+        var value = AppSettings.Parallel(this);
+        Paint(_parallel1, value == 1);
+        Paint(_parallel2, value == 2);
+        Paint(_parallel3, value == 3);
+        Paint(_parallel4, value == 4);
     }
 
     void Paint(Button button, bool active)
@@ -482,6 +609,10 @@ public class MainActivity : Activity
         _cancel.Enabled = _busy || running || pending;
         _pause.Enabled = running;
         _locationButton.Enabled = !_busy;
+        var failed = DownloadHub.FailedCount;
+        _retry.Visibility = failed > 0 ? Android.Views.ViewStates.Visible : Android.Views.ViewStates.Gone;
+        _retry.Enabled = !_busy && failed > 0 && !running;
+        _retry.Text = failed > 0 ? $"Retry failed ({failed})" : "Retry failed";
     }
 
     void RefreshRows()
@@ -517,4 +648,11 @@ enum FileFilter
     All,
     Images,
     Videos,
+}
+
+enum SortMode
+{
+    Name,
+    Size,
+    Type,
 }

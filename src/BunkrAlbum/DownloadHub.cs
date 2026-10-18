@@ -27,6 +27,7 @@ sealed class WorkItem
     public string? TreeUri { get; init; }
     public WorkPhase Phase { get; set; } = WorkPhase.Pending;
     public string Status { get; set; } = "Waiting";
+    public string? OpenUri { get; set; }
     public long LastUi { get; set; }
 
     public bool IsDone => Phase is WorkPhase.Saved or WorkPhase.Skipped;
@@ -161,6 +162,47 @@ static class DownloadHub
         }
 
         Changed?.Invoke();
+    }
+
+    public static bool RequeueFailed(Context context)
+    {
+        bool alreadyRunning;
+        lock (Gate)
+        {
+            if (Session is null)
+                return true;
+            var any = false;
+            foreach (var item in Session.Items)
+            {
+                if (item.Phase != WorkPhase.Failed || item.Status == "Cancelled")
+                    continue;
+                item.Phase = WorkPhase.Pending;
+                item.Status = "Waiting";
+                any = true;
+            }
+
+            if (!any)
+                return Session.ServiceAlive;
+            Session.Paused = false;
+            Session.Running = true;
+            _stop = StopKind.None;
+            RenewToken();
+            alreadyRunning = Session.ServiceAlive;
+            QueueStore.Save(context, Session);
+        }
+
+        Kick();
+        Changed?.Invoke();
+        return alreadyRunning;
+    }
+
+    public static int FailedCount
+    {
+        get
+        {
+            lock (Gate)
+                return Session?.Items.Count(item => item.Phase == WorkPhase.Failed && item.Status != "Cancelled") ?? 0;
+        }
     }
 
     public static WorkItem? Claim()

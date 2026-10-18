@@ -119,7 +119,7 @@ public class DownloadService : Service
         var pending = new List<Task>();
         try
         {
-            using var gate = new SemaphoreSlim(2);
+            using var gate = new SemaphoreSlim(AppSettings.Parallel(this));
             while (true)
             {
                 var token = DownloadHub.Token;
@@ -131,7 +131,9 @@ public class DownloadService : Service
                     var total = session?.Items.Count ?? 0;
                     DownloadHub.SetSummary($"Waiting for Wi-Fi · {done}/{total}");
                     UpdateNote(DownloadHub.Session, true);
-                    await Task.Delay(2000, token);
+                    ReleaseWake();
+                    await WaitForWifiAsync(token);
+                    AcquireWake();
                     continue;
                 }
 
@@ -248,6 +250,7 @@ public class DownloadService : Service
         {
             item.Phase = WorkPhase.Skipped;
             item.Status = "Already saved";
+            item.OpenUri = DownloadRepository.FindUri(this, item.TreeUri, item.SaveName);
             PartFiles.Delete(this, item);
             Touch(item, true);
             return;
@@ -285,7 +288,11 @@ public class DownloadService : Service
                     await stream.FlushAsync(cancellationToken);
                 }
 
-                await DownloadRepository.SaveAsync(this, item.TreeUri, item.SaveName, BunkrUrls.GuessMime(item.File), async (destination, token) =>
+                var length = new FileInfo(part).Length;
+                if (!BunkrUrls.IsComplete(item.File.Size, length))
+                    throw new BunkrException("Incomplete download.");
+
+                item.OpenUri = await DownloadRepository.SaveAsync(this, item.TreeUri, item.SaveName, BunkrUrls.GuessMime(item.File), async (destination, token) =>
                 {
                     await using var source = File.OpenRead(part);
                     var buffer = new byte[80 * 1024];
@@ -462,6 +469,66 @@ public class DownloadService : Service
         if (_wake?.IsHeld == true)
             _wake.Release();
         _wake = null;
+    }
+
+    async Task WaitForWifiAsync(CancellationToken cancellationToken)
+    {
+        if (OnWifi(this) || cancellationToken.IsCancellationRequested)
+            return;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callback = new WifiSignal(this, done);
+        var manager = (ConnectivityManager?)GetSystemService(ConnectivityService);
+        if (manager is null)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return;
+        }
+
+        using var bypass = AppSettings.BeginWifiBypass();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, bypass.Token);
+        manager.RegisterDefaultNetworkCallback(callback);
+        try
+        {
+            if (OnWifi(this))
+                return;
+            using (linked.Token.Register(() => done.TrySetCanceled(linked.Token)))
+                await done.Task;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Wi-Fi only was turned off.
+        }
+        finally
+        {
+            try
+            {
+                manager.UnregisterNetworkCallback(callback);
+            }
+            catch (Exception)
+            {
+                // The callback was already removed.
+            }
+        }
+    }
+
+    sealed class WifiSignal : ConnectivityManager.NetworkCallback
+    {
+        readonly DownloadService _service;
+        readonly TaskCompletionSource _done;
+        public WifiSignal(DownloadService service, TaskCompletionSource done)
+        {
+            _service = service;
+            _done = done;
+        }
+
+        public override void OnAvailable(Network network) => Pulse();
+        public override void OnCapabilitiesChanged(Network network, NetworkCapabilities networkCapabilities) => Pulse();
+
+        void Pulse()
+        {
+            if (OnWifi(_service))
+                _done.TrySetResult();
+        }
     }
 
     static string Trim(string value, int max)

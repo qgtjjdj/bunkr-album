@@ -9,12 +9,14 @@ sealed class FileListAdapter : BaseAdapter<FileRow>
     readonly Activity _activity;
     readonly IReadOnlyList<FileRow> _rows;
     readonly CheckListener _checks;
+    readonly ThumbnailLoader _thumbs;
 
     public FileListAdapter(Activity activity, IReadOnlyList<FileRow> rows, Action onSelectionChanged)
     {
         _activity = activity;
         _rows = rows;
         _checks = new CheckListener(rows, onSelectionChanged);
+        _thumbs = new ThumbnailLoader(activity);
     }
 
     public override int Count => _rows.Count;
@@ -30,11 +32,13 @@ sealed class FileListAdapter : BaseAdapter<FileRow>
         var name = view.FindViewById<TextView>(Resource.Id.file_name)!;
         var meta = view.FindViewById<TextView>(Resource.Id.file_meta)!;
         var check = view.FindViewById<CheckBox>(Resource.Id.file_check)!;
+        var thumb = view.FindViewById<ImageView>(Resource.Id.file_thumb)!;
 
         name.Text = row.File.Original;
         var kind = string.IsNullOrWhiteSpace(row.File.Extension) ? row.File.Type : row.File.Extension;
         var size = BunkrUrls.FormatSize(row.File.Size);
         meta.Text = string.IsNullOrWhiteSpace(row.Status) ? $"{kind} · {size}" : $"{kind} · {size} · {row.Status}";
+        _thumbs.Show(thumb, row.File.Thumbnail);
 
         check.SetOnCheckedChangeListener(null);
         check.Checked = row.Selected;

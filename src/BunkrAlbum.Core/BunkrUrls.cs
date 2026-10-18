@@ -102,6 +102,9 @@ public static class BunkrUrls
 
     public static bool IsVideo(BunkrFile file) => GuessMime(file).StartsWith("video/", StringComparison.Ordinal);
 
+    public static bool IsComplete(long expected, long actual)
+        => actual > 0 && (expected <= 0 || actual >= expected);
+
     public readonly record struct RangeDecision(long StartAt, bool Truncate, bool AlreadyComplete);
 
     public static RangeDecision DecideRange(long offset, int statusCode, bool canSeek)

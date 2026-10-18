@@ -13,4 +13,11 @@
   <string name="filter_images">Images</string>
   <string name="filter_videos">Videos</string>
   <string name="wifi_only">Wi-Fi only</string>
+  <string name="search_hint">Search</string>
+  <string name="sort_name">Name</string>
+  <string name="sort_size">Size</string>
+  <string name="sort_type">Type</string>
+  <string name="parallel_label">At once</string>
+  <string name="retry_failed">Retry failed</string>
+  <string name="thumbnail">Preview</string>
 </resources>

@@ -7,6 +7,8 @@ static class AppSettings
 {
     const string PrefsName = "bunkr";
     const string WifiKey = "wifi_only";
+    const string ParallelKey = "parallel";
+    static CancellationTokenSource? _wifiBypass;
 
     public static bool WifiOnly(Context context)
         => context.GetSharedPreferences(PrefsName, FileCreationMode.Private)?.GetBoolean(WifiKey, false) ?? false;
@@ -16,6 +18,39 @@ static class AppSettings
         context.GetSharedPreferences(PrefsName, FileCreationMode.Private)?
             .Edit()?
             .PutBoolean(WifiKey, value)?
+            .Apply();
+        if (!value)
+        {
+            try
+            {
+                _wifiBypass?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The wait already finished.
+            }
+        }
+    }
+
+    public static CancellationTokenSource BeginWifiBypass()
+    {
+        var next = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _wifiBypass, next);
+        previous?.Dispose();
+        return next;
+    }
+
+    public static int Parallel(Context context)
+    {
+        var value = context.GetSharedPreferences(PrefsName, FileCreationMode.Private)?.GetInt(ParallelKey, 2) ?? 2;
+        return value is < 1 or > 4 ? 2 : value;
+    }
+
+    public static void SetParallel(Context context, int value)
+    {
+        context.GetSharedPreferences(PrefsName, FileCreationMode.Private)?
+            .Edit()?
+            .PutInt(ParallelKey, Math.Clamp(value, 1, 4))?
             .Apply();
     }
 }
@@ -75,6 +110,7 @@ static class QueueStore
                 Timestamp = item.File.Timestamp,
                 Thumbnail = item.File.Thumbnail,
                 SaveName = item.SaveName,
+                OpenUri = item.OpenUri,
                 Phase = item.Phase.ToString(),
                 Status = item.Status,
             }).ToList(),
@@ -107,6 +143,7 @@ static class QueueStore
                     Place = item.Place,
                     TreeUri = item.TreeUri,
                     SaveName = item.SaveName,
+                    OpenUri = item.OpenUri,
                     Phase = phase,
                     Status = string.IsNullOrWhiteSpace(item.Status) ? "Waiting" : item.Status,
                     File = new BunkrFile(
@@ -174,6 +211,7 @@ static class QueueStore
         public string Timestamp { get; set; } = "";
         public string Thumbnail { get; set; } = "";
         public string SaveName { get; set; } = "";
+        public string? OpenUri { get; set; }
         public string Phase { get; set; } = nameof(WorkPhase.Pending);
         public string Status { get; set; } = "Waiting";
     }
