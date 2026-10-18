@@ -13,7 +13,8 @@ namespace BunkrAlbum;
     MainLauncher = true,
     Exported = true,
     Theme = "@style/AppTheme",
-    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden)]
+    ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.KeyboardHidden,
+    LaunchMode = LaunchMode.SingleTop)]
 public class MainActivity : Activity
 {
     const int PickFolderRequest = 41;
@@ -53,8 +54,13 @@ public class MainActivity : Activity
         _locationButton = RequireView<Button>(Resource.Id.location_button);
 
         _load.Click += async (_, _) => await LoadAlbumAsync();
-        _download.Click += async (_, _) => await DownloadSelectedAsync();
-        _cancel.Click += (_, _) => _work?.Cancel();
+        _download.Click += (_, _) => StartDownload();
+        _cancel.Click += (_, _) =>
+        {
+            _work?.Cancel();
+            if (DownloadHub.IsRunning)
+                DownloadHub.RequestCancel(this);
+        };
         _locationButton.Click += (_, _) => ChooseLocation();
         _selectAll.CheckedChange += (_, e) =>
         {
@@ -66,6 +72,8 @@ public class MainActivity : Activity
             UpdateDownloadButton();
         };
         UpdateLocationLabel();
+        DownloadHub.Changed += OnHubChanged;
+        ApplySession();
     }
 
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
@@ -92,8 +100,15 @@ public class MainActivity : Activity
         _status.Text = "Speichert nach " + StorageLocation.Describe(uri.ToString());
     }
 
+    protected override void OnResume()
+    {
+        base.OnResume();
+        ApplySession();
+    }
+
     protected override void OnDestroy()
     {
+        DownloadHub.Changed -= OnHubChanged;
         _work?.Cancel();
         _client.Dispose();
         base.OnDestroy();
@@ -101,7 +116,7 @@ public class MainActivity : Activity
 
     void ChooseLocation()
     {
-        if (_busy)
+        if (_busy || DownloadHub.IsRunning)
             return;
 
         if (StorageLocation.GetTreeUri(this) is null)
@@ -197,6 +212,8 @@ public class MainActivity : Activity
             _suppressSelectAll = false;
             _selectAll.Visibility = Android.Views.ViewStates.Visible;
             BindRows();
+            if (DownloadHub.IsRunning)
+                ApplySession();
         }
         catch (OperationCanceledException)
         {
@@ -213,10 +230,13 @@ public class MainActivity : Activity
         }
     }
 
-    async Task DownloadSelectedAsync()
+    void StartDownload()
     {
-        if (_busy)
+        if (DownloadHub.IsRunning)
+        {
+            Toast.MakeText(this, "Ein Download läuft schon.", ToastLength.Short)?.Show();
             return;
+        }
 
         var selected = _rows.Where(row => row.Selected).ToList();
         if (selected.Count == 0)
@@ -228,107 +248,86 @@ public class MainActivity : Activity
         if (!TryGetWritableTree(out var treeUri))
             return;
 
-        var place = StorageLocation.Describe(treeUri);
-
-        _work = new CancellationTokenSource();
-        var ct = _work.Token;
-        SetBusy(true);
-        var ok = 0;
-        var failed = 0;
-        using var gate = new SemaphoreSlim(2);
-
-        try
+        if (OperatingSystem.IsAndroidVersionAtLeast(33) &&
+            CheckSelfPermission(Android.Manifest.Permission.PostNotifications) != Permission.Granted)
         {
-            var tasks = selected.Select(async row =>
+            RequestPermissions([Android.Manifest.Permission.PostNotifications], 51);
+        }
+
+        var items = selected.Select(row =>
+        {
+            var index = _rows.IndexOf(row) + 1;
+            row.Status = "Wartet";
+            return new WorkItem
             {
-                await gate.WaitAsync(ct);
-                try
-                {
-                    await DownloadRowAsync(row, treeUri, ct);
-                    Interlocked.Increment(ref ok);
-                }
-                catch (OperationCanceledException)
-                {
-                    row.Status = "Abgebrochen";
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    row.Status = ex.Message;
-                    Interlocked.Increment(ref failed);
-                }
-                finally
-                {
-                    gate.Release();
-                    var saved = ok;
-                    var broken = failed;
-                    RunOnUiThread(() =>
-                    {
-                        RefreshRowsForce();
-                        if (_busy)
-                            _status.Text = $"{saved} gespeichert · {broken} Fehler · {selected.Count} ausgewählt";
-                    });
-                }
-            });
+                File = row.File,
+                SaveName = $"{index:000}_{BunkrUrls.SanitizeFileName(row.File.Original)}",
+            };
+        }).ToList();
 
-            await Task.WhenAll(tasks);
-            _status.Text = failed == 0
-                ? $"Fertig. {ok} Dateien unter {place}."
-                : $"Fertig. {ok} gespeichert, {failed} fehlgeschlagen.";
-        }
-        catch (OperationCanceledException)
+        var session = new DownloadSession
         {
-            _status.Text = "Abgebrochen.";
-        }
-        finally
-        {
-            RefreshRowsForce();
-            SetBusy(false);
-        }
+            AlbumTitle = string.IsNullOrWhiteSpace(_title.Text) ? "Bunkr Album" : _title.Text!,
+            Place = StorageLocation.Describe(treeUri),
+            TreeUri = treeUri,
+            Items = items,
+            Summary = $"0/{items.Count} startet …",
+        };
+        if (!DownloadHub.TryBegin(session))
+            return;
+
+        RefreshRowsForce();
+        var intent = new Intent(this, typeof(DownloadService));
+        intent.SetAction(DownloadService.ActionStart);
+        StartForegroundService(intent);
+        ApplySession();
     }
 
-    async Task DownloadRowAsync(FileRow row, string? treeUri, CancellationToken cancellationToken)
+    void OnHubChanged()
     {
-        var index = _rows.IndexOf(row) + 1;
-        var fileName = $"{index:000}_{BunkrUrls.SanitizeFileName(row.File.Original)}";
-        var mime = BunkrUrls.GuessMime(row.File);
-        Exception? last = null;
-
-        for (var attempt = 1; attempt <= 2; attempt++)
+        RunOnUiThread(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            row.Status = attempt == 1 ? "Verbinde …" : "Neuer Versuch …";
-            RunOnUiThread(RefreshRowsForce);
-            try
+            if (!IsDestroyed)
+                ApplySession();
+        });
+    }
+
+    void ApplySession()
+    {
+        var session = DownloadHub.Session;
+        if (session is null)
+            return;
+
+        if (_rows.Count == 0 && !_busy)
+        {
+            _title.Text = session.AlbumTitle;
+            _rows.AddRange(session.Items.Select(item => new FileRow
             {
-                await DownloadRepository.SaveAsync(this, treeUri, fileName, mime, async (stream, token) =>
-                {
-                    var progress = new InlineProgress(bytes =>
-                    {
-                        var now = Environment.TickCount64;
-                        row.Status = BunkrUrls.FormatSize(bytes);
-                        if (now - row.LastUi > 250)
-                        {
-                            row.LastUi = now;
-                            RunOnUiThread(RefreshRows);
-                        }
-                    });
-                    await _client.DownloadAsync(row.File, stream, progress, token);
-                }, cancellationToken);
-                row.Status = "Gespeichert";
-                return;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex) when (attempt < 2)
-            {
-                last = ex;
-            }
+                File = item.File,
+                Status = item.Status,
+                Selected = true,
+            }));
+            _suppressSelectAll = true;
+            _selectAll.Checked = true;
+            _suppressSelectAll = false;
+            _selectAll.Visibility = Android.Views.ViewStates.Visible;
+            BindRows();
         }
 
-        throw last ?? new BunkrException("Download fehlgeschlagen.");
+        var changed = false;
+        foreach (var row in _rows)
+        {
+            var item = session.Items.FirstOrDefault(candidate => candidate.File.Id == row.File.Id);
+            if (item is null || row.Status == item.Status)
+                continue;
+            row.Status = item.Status;
+            changed = true;
+        }
+
+        if (changed)
+            RefreshRowsForce();
+        _status.Text = session.Summary;
+        UpdateDownloadButton();
     }
 
     void BindRows()
@@ -349,8 +348,11 @@ public class MainActivity : Activity
     void UpdateDownloadButton()
     {
         var count = _rows.Count(row => row.Selected);
-        _download.Enabled = !_busy && count > 0;
+        var downloading = DownloadHub.IsRunning;
+        _download.Enabled = !_busy && !downloading && count > 0;
         _download.Text = count > 0 ? $"Herunterladen ({count})" : "Herunterladen";
+        _cancel.Enabled = _busy || downloading;
+        _locationButton.Enabled = !_busy && !downloading;
     }
 
     void RefreshRows()
@@ -373,19 +375,10 @@ public class MainActivity : Activity
         _busy = busy;
         _load.Enabled = !busy;
         _url.Enabled = !busy;
-        _cancel.Enabled = busy;
-        _locationButton.Enabled = !busy;
         _selectAll.Enabled = !busy;
         UpdateDownloadButton();
     }
 
     T RequireView<T>(int id) where T : Android.Views.View
         => FindViewById<T>(id) ?? throw new InvalidOperationException("View fehlt: " + id);
-
-    sealed class InlineProgress : IProgress<long>
-    {
-        readonly Action<long> _report;
-        public InlineProgress(Action<long> report) => _report = report;
-        public void Report(long value) => _report(value);
-    }
 }
