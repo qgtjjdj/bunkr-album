@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -13,10 +14,25 @@ public sealed class BunkrClient : IDisposable
 
     public BunkrClient(HttpMessageHandler? handler = null)
     {
-        _http = handler is null
-            ? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
-            : new HttpClient(handler);
+        if (handler is null)
+        {
+            var sockets = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromSeconds(60),
+                PooledConnectionIdleTimeout = TimeSpan.FromSeconds(20),
+                ConnectTimeout = TimeSpan.FromSeconds(20),
+                AutomaticDecompression = DecompressionMethods.All,
+            };
+            _http = new HttpClient(sockets);
+        }
+        else
+        {
+            _http = new HttpClient(handler);
+        }
+
         _http.Timeout = Timeout.InfiniteTimeSpan;
+        _http.DefaultRequestVersion = HttpVersion.Version11;
+        _http.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
         _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
         _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "en");
     }
@@ -40,6 +56,7 @@ public sealed class BunkrClient : IDisposable
     {
         using var body = new StringContent("{\"id\":\"" + file.Id + "\"}", Encoding.UTF8, "application/json");
         using var request = new HttpRequestMessage(HttpMethod.Post, BunkrUrls.DownloadApi) { Content = body };
+        Prepare(request);
         request.Headers.TryAddWithoutValidation("Origin", "https://dl.bunkr.cr");
         request.Headers.TryAddWithoutValidation("Referer", "https://dl.bunkr.cr/");
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
@@ -58,8 +75,28 @@ public sealed class BunkrClient : IDisposable
         CancellationToken cancellationToken = default,
         long offset = 0)
     {
-        var url = await ResolveWithRetryAsync(file, cancellationToken);
-        return await CopyUrlAsync(url, destination, progress, offset, cancellationToken);
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 4; attempt++)
+        {
+            try
+            {
+                if (destination.CanSeek)
+                    offset = destination.Position;
+                var url = await ResolveWithRetryAsync(file, cancellationToken);
+                return await CopyUrlAsync(url, destination, progress, offset, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (attempt < 4 && IsTransient(ex))
+            {
+                last = ex;
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
+
+        throw new BunkrException(Explain(last!), last);
     }
 
     async Task<string> ResolveWithRetryAsync(BunkrFile file, CancellationToken cancellationToken)
@@ -92,6 +129,7 @@ public sealed class BunkrClient : IDisposable
         var path = new Uri(mediaUrl).AbsolutePath;
         var signUrl = BunkrUrls.SignApi + "?path=" + BunkrUrls.EncodeUriComponent(Uri.UnescapeDataString(path));
         using var request = new HttpRequestMessage(HttpMethod.Get, signUrl);
+        Prepare(request);
         request.Headers.TryAddWithoutValidation("Referer", "https://bunkr.cr/");
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
         var json = await SendTextAsync(request, cancellationToken);
@@ -107,6 +145,7 @@ public sealed class BunkrClient : IDisposable
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        Prepare(request);
         request.Headers.TryAddWithoutValidation("Referer", "https://bunkr.cr/");
         request.Headers.TryAddWithoutValidation("Accept", "*/*");
         if (offset > 0)
@@ -162,10 +201,69 @@ public sealed class BunkrClient : IDisposable
 
     async Task<string> GetTextAsync(string url, string referer, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.TryAddWithoutValidation("Referer", referer);
-        request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml");
-        return await SendTextAsync(request, cancellationToken);
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                Prepare(request);
+                request.Headers.TryAddWithoutValidation("Referer", referer);
+                request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml");
+                return await SendTextAsync(request, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (attempt < 3 && IsTransient(ex))
+            {
+                last = ex;
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+            }
+        }
+
+        throw new BunkrException(Explain(last!), last);
+    }
+
+    static void Prepare(HttpRequestMessage request)
+    {
+        request.Version = HttpVersion.Version11;
+        request.VersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+    }
+
+    public static string Explain(Exception ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("EOF", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("transport stream", StringComparison.OrdinalIgnoreCase))
+                return "Connection dropped.";
+        }
+
+        return ex is BunkrException ? ex.Message : "Connection dropped.";
+    }
+
+    static bool IsTransient(Exception ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is OperationCanceledException)
+                return false;
+            if (current is HttpRequestException or IOException or TimeoutException)
+                return true;
+            var text = current.Message;
+            if (text.Contains("EOF", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("transport stream", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("connection", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("timed out", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("reset", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("rejected", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("HTTP 5", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     async Task<string> SendTextAsync(HttpRequestMessage request, CancellationToken cancellationToken)

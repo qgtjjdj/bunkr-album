@@ -115,7 +115,7 @@ public class DownloadService : Service
         AcquireWake();
         DownloadHub.PrepareResume(this);
         DownloadHub.MarkAlive();
-        using var client = new BunkrClient();
+        using var client = new BunkrClient(AndroidHttp.Create());
         var pending = new List<Task>();
         try
         {
@@ -175,8 +175,9 @@ public class DownloadService : Service
         }
         catch (Exception ex)
         {
-            DownloadHub.FinishDone(this, ex.Message);
-            Shutdown(ex.Message, paused: false);
+            DownloadHub.SetSummary(BunkrClient.Explain(ex));
+            DownloadHub.FinishPaused(this);
+            Shutdown(DownloadHub.Session?.Summary ?? "Paused.", paused: true);
         }
     }
 
@@ -254,7 +255,7 @@ public class DownloadService : Service
 
         var part = PartFiles.PathFor(this, item);
         Exception? last = null;
-        for (var attempt = 1; attempt <= 2; attempt++)
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             item.Status = attempt == 1 ? "Connecting…" : "Retrying…";
@@ -306,14 +307,17 @@ public class DownloadService : Service
             {
                 throw;
             }
-            catch (Exception ex) when (attempt < 2)
+            catch (Exception ex)
             {
                 last = ex;
+                if (attempt == 3)
+                    break;
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
             }
         }
 
         item.Phase = WorkPhase.Failed;
-        item.Status = last?.Message ?? "Failed";
+        item.Status = BunkrClient.Explain(last!);
         Touch(item, true);
     }
 

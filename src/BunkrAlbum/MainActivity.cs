@@ -31,7 +31,7 @@ public class MainActivity : Activity
 {
     const int PickFolderRequest = 41;
 
-    readonly BunkrClient _client = new();
+    readonly BunkrClient _client = new(AndroidHttp.Create());
     readonly List<FileRow> _rows = [];
     readonly List<FileRow> _visible = [];
     EditText _url = null!;
